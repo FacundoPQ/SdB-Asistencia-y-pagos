@@ -329,34 +329,103 @@
             let sabadoInicial = getSabadoPrevio(h_hoy);
             sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
  
+            // ==========================================================================
+            // 1. REPORTE SEMANAL (Pestaña t0) - Con Estado, Horas y Pago Basado en Horas Reales
+            // ==========================================================================
             const dsSem = [0,1,2,3,4,5,6].map(x => {
                 let d = new Date(sabadoInicial); d.setDate(sabadoInicial.getDate() + x); return gK(d); 
             });
-            let h0 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th>HS</th><th>PAGO</th></tr></thead><tbody>';
+            
+            let h0 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th style="text-align:center;">ESTADO</th><th style="text-align:center;">HS</th><th>PAGO</th></tr></thead><tbody>';
             let tS = 0;
+            
             personal.forEach(p => {
-                let hsT = 0; const c = costosConfig[p] || {valorHora: 0};
-                dsSem.forEach(k => { if (asistencia[p] && asistencia[p][k]) hsT += (Number(asistencia[p][k].horas) || 0); });
-                let sub = hsT * (Number(c.valorHora) || 0); tS += sub;
-                h0 += `<tr><td style="font-weight: bold">${p}</td><td>${hsT}</td><td>$${sub.toLocaleString('es-AR')}</td></tr>`;
+                let hsT = 0;
+                let diasPresente = 0;
+                const c = costosConfig[p] || {valorHora: 0};
+                
+                dsSem.forEach(k => { 
+                    if (asistencia[p] && asistencia[p][k]) {
+                        let hs = Number(asistencia[p][k].horas) || 0;
+                        // REGLA: Si trabajó al menos 1 hora y no tiene estado ausente forzado
+                        if (asistencia[p][k].estado !== 'ausente' && hs >= 1) {
+                            diasPresente += 1;
+                            hsT += hs;
+                        }
+                    } 
+                });
+                
+                let sub = hsT * (Number(c.valorHora) || 0); 
+                tS += sub;
+                
+                const estadoTexto = diasPresente > 0 ? `Presente (${diasPresente}d)` : 'Ausente';
+                const estadoColor = diasPresente > 0 ? '#3DB85A' : '#E24B4A';
+
+                h0 += `<tr>
+                    <td style="font-weight: bold">${p}</td>
+                    <td style="text-align:center; color:${estadoColor}; font-weight:bold;">${estadoTexto}</td>
+                    <td style="text-align:center;">${hsT} h</td>
+                    <td>$${sub.toLocaleString('es-AR')}</td>
+                </tr>`;
             });
-            document.getElementById('t0').innerHTML = h0 + `</tbody><tfoot><tr class="t-total"><td colspan="2">TOTAL SEMANA</td><td>$${tS.toLocaleString('es-AR')}</td></tr></tfoot></table>`;
+            document.getElementById('t0').innerHTML = h0 + `</tbody><tfoot><tr class="t-total"><td colspan="3">TOTAL SEMANA</td><td>$${tS.toLocaleString('es-AR')}</td></tr></tfoot></table>`;
  
-            let h1 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th>HS</th><th>PAGO</th></tr></thead><tbody>';
-            let tM = 0; let mesAct = sabadoInicial.getMonth(); let anoAct = sabadoInicial.getFullYear();
+            // ==========================================================================
+            // 2. REPORTE MENSUAL (Pestaña t1) - CORREGIDO: MES COMPLETO EN BASE A LA SEMANA ACTIVA
+            // ==========================================================================
+            let h1 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th style="text-align:center;">ESTADO</th><th style="text-align:center;">HS</th><th>PAGO</th></tr></thead><tbody>';
+            let tM = 0; 
+            
+            // Detectar mes y año de la semana que se está visualizando en pantalla
+            let mesAct = sabadoInicial.getMonth(); 
+            let anoAct = sabadoInicial.getFullYear();
+            
+            // Forzar las fechas de inicio (Día 1) y fin (Día 30/31) de ese mes completo
+            let inicioMes = new Date(anoAct, mesAct, 1);
+            let finMes = new Date(anoAct, mesAct + 1, 0);
+            
+            // Construir array de fechas de todo el mes entero
+            const fechasMes = [];
+            let curMes = new Date(inicioMes);
+            while (curMes <= finMes) {
+                fechasMes.push(gK(curMes));
+                curMes.setDate(curMes.getDate() + 1);
+            }
+
             personal.forEach(p => {
-                let hsM = 0; const c = costosConfig[p] || {valorHora: 0};
-                if(asistencia[p]) {
-                    Object.keys(asistencia[p]).forEach(k => {
-                        let fechak = new Date(k + "T12:00:00");
-                        if(fechak.getMonth() === mesAct && fechak.getFullYear() === anoAct) hsM += (Number(asistencia[p][k].horas) || 0);
-                    });
-                }
-                let sub = hsM * (Number(c.valorHora) || 0); tM += sub;
-                h1 += `<tr><td style="font-weight: bold">${p}</td><td>${hsM}</td><td>$${sub.toLocaleString('es-AR')}</td></tr>`;
+                let hsM = 0; 
+                let diasPresenteMes = 0;
+                const c = costosConfig[p] || {valorHora: 0};
+                
+                fechasMes.forEach(k => {
+                    if (asistencia[p] && asistencia[p][k]) {
+                        let hs = Number(asistencia[p][k].horas) || 0;
+                        // REGLA: Al menos 1 hora trabajada = Presente
+                        if (asistencia[p][k].estado !== 'ausente' && hs >= 1) {
+                            diasPresenteMes += 1;
+                            hsM += hs;
+                        }
+                    }
+                });
+                
+                let sub = hsM * (Number(c.valorHora) || 0); 
+                tM += sub;
+                
+                const estadoTextoMes = diasPresenteMes > 0 ? `Presente (${diasPresenteMes}d)` : 'Ausente';
+                const estadoColorMes = diasPresenteMes > 0 ? '#3DB85A' : '#E24B4A';
+
+                h1 += `<tr>
+                    <td style="font-weight: bold">${p}</td>
+                    <td style="text-align:center; color:${estadoColorMes}; font-weight:bold;">${estadoTextoMes}</td>
+                    <td style="text-align:center;">${hsM} h</td>
+                    <td>$${sub.toLocaleString('es-AR')}</td>
+                </tr>`;
             });
-            document.getElementById('t1').innerHTML = h1 + `</tbody><tfoot><tr class="t-total"><td colspan="2">TOTAL MES</td><td>$${tM.toLocaleString('es-AR')}</td></tr></tfoot></table>`;
+            document.getElementById('t1').innerHTML = h1 + `</tbody><tfoot><tr class="t-total"><td colspan="3">TOTAL MES</td><td>$${tM.toLocaleString('es-AR')}</td></tr></tfoot></table>`;
  
+            // ==========================================================================
+            // 3. CONFIGURACIÓN DE COSTOS (Pestaña t2)
+            // ==========================================================================
             let h2 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th>$/HORA</th></tr></thead><tbody>';
             personal.forEach(p => {
                 const c = costosConfig[p] || {valorHora:0};
@@ -399,21 +468,32 @@
  
             const datos = personal.map(p => {
                 let totalFaltantesPersona = 0;
+                let diasPresente = 0;
+                let horasTrabajadasTotal = 0;
                 const valorHoraPersona = (costosConfig[p] && Number(costosConfig[p].valorHora)) ? Number(costosConfig[p].valorHora) : 0;
                 
                 fechas.forEach(d => {
                     const k = gK(d);
                     const reg = asistencia[p] && asistencia[p][k];
                     if (reg) {
-                        if (reg.estado === 'ausente') {
-                            totalFaltantesPersona += 9;
-                        } else {
-                            let hsTrabajadas = Number(reg.horas) || 0;
+                        let hsTrabajadas = Number(reg.horas) || 0;
+                        if (reg.estado !== 'ausente' && hsTrabajadas >= 1) {
+                            diasPresente += 1;
                             totalFaltantesPersona += Math.max(0, 9 - hsTrabajadas);
+                            horasTrabajadasTotal += hsTrabajadas;
+                        } else {
+                            totalFaltantesPersona += 9;
                         }
+                    } else {
+                        totalFaltantesPersona += 9;
                     }
                 });
-                return { nombre: p, totalFaltantesPersona, monto: totalFaltantesPersona * valorHoraPersona };
+                return { 
+                    nombre: p, 
+                    totalFaltantesPersona, 
+                    diasPresente,
+                    monto: horasTrabajadasTotal * valorHoraPersona 
+                };
             });
  
             const granTotalHorasFaltantes = datos.reduce((s, d) => s + d.totalFaltantesPersona, 0);
@@ -430,12 +510,18 @@
         function renderPremioPreview(granTotalHorasFaltantes, granTotalPlata, iniVal, finVal, datos) {
             const preview = document.getElementById('premio-preview');
  
-            const filas = datos.map(d => `
+            const filas = datos.map(d => {
+                const estadoTexto = d.diasPresente > 0 ? `Presente (${d.diasPresente}d)` : 'Ausente';
+                const estadoColor = d.diasPresente > 0 ? '#3DB85A' : '#E24B4A';
+                
+                return `
                 <tr>
                     <td style="font-weight:bold; font-size:11px;">${d.nombre}</td>
+                    <td style="text-align:center; color:${estadoColor}; font-weight:bold; font-size:11px;">${estadoTexto}</td>
                     <td style="text-align:center; color:#E24B4A; font-weight:bold; font-size:11px;">${d.totalFaltantesPersona} h</td>
                     <td style="text-align:right; color:#F5C400; font-weight:bold; font-size:11px;">$${Math.round(d.monto).toLocaleString('es-AR')}</td>
-                </tr>`).join('');
+                </tr>`;
+            }).join('');
  
             preview.style.display = 'block';
             preview.innerHTML = `
@@ -446,6 +532,7 @@
                     <thead>
                         <tr>
                             <th style="text-align:left;">PERSONAL</th>
+                            <th style="text-align:center;">ESTADO</th>
                             <th style="text-align:center; color:#E24B4A;">HS FALTANTES</th>
                             <th style="text-align:right; color:#F5C400;">VALOR TOTAL</th>
                         </tr>
@@ -453,7 +540,7 @@
                     <tbody>${filas}</tbody>
                     <tfoot>
                         <tr class="gran-total-row">
-                            <td style="text-align:left; font-size:11px;">TOTAL GENERAL</td>
+                            <td style="text-align:left; font-size:11px;" colspan="2">TOTAL GENERAL</td>
                             <td style="text-align:center; color:#E24B4A;">${granTotalHorasFaltantes} h</td>
                             <td style="text-align:right; color:#3DB85A;">$${Math.round(granTotalPlata).toLocaleString('es-AR')}</td>
                         </tr>
@@ -471,7 +558,6 @@
             ejecutarExportacionPDF(elemento, `horas_faltantes_${ini}_a_${fin}.pdf`);
         }
 
-        // FUNCIONES NUEVAS Y CORREGIDAS PARA DIARIO, SEMANAL Y MENSUAL
         function abrirSelectorFecha() { 
             document.getElementById('fecha-overlay').style.display = 'flex'; 
         }
@@ -481,7 +567,6 @@
             if(!fechaSeleccionada) { alert('Por favor selecciona una fecha primero.'); return; }
             document.getElementById('fecha-overlay').style.display = 'none';
 
-            // Armar estructura temporal limpita para el diario
             const contenedor = document.createElement('div');
             contenedor.innerHTML = `
                 <h2 style="margin-bottom:15px; font-size:16px;">📋 Parte Diario - Asistencia</h2>
@@ -504,7 +589,6 @@
         }
 
         function generarPDF(tipo) {
-            // Reutiliza los datos ya calculados de las pestañas del menú (Semanales o Mensuales)
             actualizarTablas();
             let origenId = tipo === 'semanal' ? 't0' : 't1';
             const tablaOriginal = document.getElementById(origenId).querySelector('table');
@@ -524,7 +608,6 @@
             ejecutarExportacionPDF(contenedor, `reporte_${tipo}.pdf`);
         }
 
-        // MOTOR GENERAL DE EXPORTACIÓN (Limpia estilos oscuros y exporta)
         function ejecutarExportacionPDF(elementoHtml, nombreArchivo) {
             const clon = elementoHtml.cloneNode(true);
             const botonExportar = clon.querySelector('button');
@@ -545,7 +628,6 @@
                 header.style.fontSize = '12px';
             }
 
-            // Normalizar todas las tablas a formato imprenta legible
             clon.querySelectorAll('table, th, td').forEach(el => {
                 el.style.color = '#000000';
                 el.style.borderColor = '#cccccc';
@@ -556,7 +638,6 @@
                 el.style.color = '#000000';
             });
 
-            // Resaltado de totales generales corregidos (Verde clarito / Letra negra)
             clon.querySelectorAll('.gran-total-row td, .t-total td').forEach(td => {
                 td.style.background = '#e8f5e9'; 
                 td.style.color = '#000000';      
