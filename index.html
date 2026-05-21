@@ -185,6 +185,12 @@
                 db = firebase.database();
                 docRef = db.ref('sdb/asistencia');
                 
+                // LEER LA ÚLTIMA SEMANA GUARDADA EN ESTE NAVEGADOR
+                const ultimaSemana = localStorage.getItem('sdb_ultima_semana');
+                if (ultimaSemana !== null) {
+                    semOff = parseInt(ultimaSemana, 10) || 0;
+                }
+                
                 docRef.on('value', snap => {
                     const status = document.getElementById('sync-status');
                     if (snap.exists()) {
@@ -218,6 +224,10 @@
             const status = document.getElementById('sync-status');
             status.textContent = 'Guardando...';
             status.className = 'loading';
+            
+            // GUARDAR LA SEMANA ACTUAL EN EL NAVEGADOR
+            localStorage.setItem('sdb_ultima_semana', semOff);
+
             docRef.set({ personal, asistencia, costosConfig })
                 .then(() => {
                     status.textContent = 'En línea';
@@ -232,6 +242,8 @@
         }
  
         function guardarSilencioso() {
+            // TAMBIÉN ACTUALIZA LA SEMANA EN EL GUARDADO SILENCIOSO
+            localStorage.setItem('sdb_ultima_semana', semOff);
             if(docRef) docRef.set({ personal, asistencia, costosConfig }).catch(console.error);
         }
  
