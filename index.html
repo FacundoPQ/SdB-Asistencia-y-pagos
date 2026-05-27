@@ -492,164 +492,168 @@
             document.getElementById('recibos-overlay').style.display = 'flex';
         }
 
-        function generarRecibosPDF() {
-            const seleccionados = Array.from(document.querySelectorAll('.chk-recibo:checked'));
-            if(seleccionados.length === 0) { alert('Seleccioná al menos a una persona'); return; }
+      function generarRecibosPDF() {
+    const seleccionados = Array.from(document.querySelectorAll('.chk-recibo:checked'));
+    if(seleccionados.length === 0) { alert('Seleccioná al menos a una persona'); return; }
 
-            // Calcular exactamente la fecha del viernes de esta semana en pantalla (Sábado + 6 días)
-            let h_hoy = new Date(); 
-            let sabadoInicial = getSabadoPrevio(h_hoy);
-            sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
-            
-            let viernesObj = new Date(sabadoInicial);
-            viernesObj.setDate(sabadoInicial.getDate() + 6);
-            let diaV = viernesObj.getDate().toString().padStart(2, '0');
-            let mesV = (viernesObj.getMonth() + 1).toString().padStart(2, '0');
-            let anoV = viernesObj.getFullYear();
-            let fechaViernesFormateada = `${diaV}/${mesV}/${anoV}`;
+    // Calcular exactamente la fecha del viernes de esta semana en pantalla (Sábado + 6 días)
+    let h_hoy = new Date(); 
+    let sabadoInicial = getSabadoPrevio(h_hoy);
+    sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
+    
+    let viernesObj = new Date(sabadoInicial);
+    viernesObj.setDate(sabadoInicial.getDate() + 6);
+    let diaV = viernesObj.getDate().toString().padStart(2, '0');
+    let mesV = (viernesObj.getMonth() + 1).toString().padStart(2, '0');
+    let anoV = viernesObj.getFullYear();
+    let fechaViernesFormateada = `${diaV}/${mesV}/${anoV}`;
 
-            const contenedor = document.createElement('div');
-            contenedor.className = 'recibo-print-container';
-            
-            // Inyección de estilos CSS puros para impresión A4 exacta y perfecta alineación
-            let html = `
-            <style>
-                .recibo-print-container {
-                    background: #ffffff !important;
-                    color: #000000 !important;
-                    font-family: Arial, sans-serif;
-                    width: 100%;
-                    padding: 0;
-                    margin: 0;
-                }
-                .recibo-card {
-                    width: 100%;
-                    height: 66mm; /* Más alto para dar más espacio general */
-                    border: 1px dashed #444 !important;
-                    margin-bottom: 4mm;
-                    padding: 6mm 8mm;
-                    box-sizing: border-box;
-                    background: #ffffff !important;
-                    page-break-inside: avoid; /* Clave: Evita que el recibo se corte a la mitad */
-                }
-                .recibo-card:nth-child(4n) {
-                    margin-bottom: 0; /* Quita el margen al cuarto elemento */
-                }
-                .recibo-table-inner {
-                    width: 100%;
-                    border-collapse: collapse;
-                }
-                .recibo-table-inner td {
-                    padding: 0;
-                    color: #000000 !important;
-                    border: none !important;
-                    background: none !important;
-                }
-                .subt-row td {
-                    font-size: 12px;
-                    padding-bottom: 10px; /* Un poco más de aire abajo de la fecha */
-                }
-                .campo-llenado-table {
-                    width: 100%;
-                    margin-top: 6px;
-                    border-collapse: collapse;
-                }
-                .campo-llenado-table td {
-                    padding: 2px 0;
-                }
-                .linea-puntos {
-                    border-bottom: 1px dotted #000000 !important;
-                    font-weight: bold;
-                    padding-left: 5px;
-                }
-                .salto-pagina {
-                    page-break-after: always;
-                }
-            </style>
-            `;
-
-            seleccionados.forEach((chk, index) => {
-                const nombre = chk.value;
-                const monto = parseFloat(chk.getAttribute('data-monto'));
-                const montoFormat = monto.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-
-                html += `
-                <div class="recibo-card">
-                    <table class="recibo-table-inner">
-                        <tr>
-                            <td colspan="2" style="text-align:center; font-size: 16px; font-weight: bold; text-transform: uppercase; padding-bottom: 12px; letter-spacing: 1px;">Recibo de Dinero</td>
-                        </tr>
-                        <tr class="subt-row">
-                            <td style="width: 50%;"><b>Fecha:</b> ${fechaViernesFormateada}</td>
-                            <td style="width: 50%; text-align: right;"><b>Recibí de:</b> IIBR Ingeniería SRL</td>
-                        </tr>
-                        <tr>
-                            <td colspan="2">
-                                <table class="campo-llenado-table">
-                                    <tr>
-                                        <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>Nombre:</b>&nbsp;</td>
-                                        <td class="linea-puntos" style="font-size: 13px;">${nombre}</td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td colspan="2">
-                                <table class="campo-llenado-table">
-                                    <tr>
-                                        <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>La suma de:</b>&nbsp;</td>
-                                        <td class="linea-puntos" style="font-size: 13px;">$ ${montoFormat}</td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td colspan="2">
-                                <table class="campo-llenado-table">
-                                    <tr>
-                                        <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>En concepto de:</b>&nbsp;</td>
-                                        <td class="linea-puntos" style="font-size: 12px;">Mano de obra de hormigón armado para la obra: Sanchez de Bustamante 1165</td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td colspan="2">
-                                <!-- Acá está la magia: margin-top: 35px para separar bien las firmas del concepto -->
-                                <table style="width: 100%; margin-top: 35px; border-collapse: collapse;">
-                                    <tr>
-                                        <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>Firma</b></td>
-                                        <td style="width: 5%; background: none !important;"></td>
-                                        <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>Aclaración</b></td>
-                                        <td style="width: 5%; background: none !important;"></td>
-                                        <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>DNI / CUIT</b></td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                    </table>
-                </div>`;
-
-                // Aplica un salto de página forzado e impecable cada exactamente 4 elementos
-                if ((index + 1) % 4 === 0 && (index + 1) !== seleccionados.length) {
-                    html += '<div class="salto-pagina"></div>';
-                }
-            });
-
-            contenedor.innerHTML = html;
-            document.getElementById('recibos-overlay').style.display = 'none';
-
-            const periodo = document.getElementById('tit-sem').textContent.replace(/ /g, '_');
-            const opt = {
-                margin:       10, 
-                filename:     `Recibos_Semanales_${periodo}.pdf`,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, logging: false, useCORS: true },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-            
-            html2pdf().set(opt).from(contenedor).save();
+    const contenedor = document.createElement('div');
+    contenedor.className = 'recibo-print-container';
+    
+    // Inyección de estilos CSS puros para impresión A4
+    let html = `
+    <style>
+        .recibo-print-container {
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-family: Arial, sans-serif;
+            width: 100%;
+            padding: 0;
+            margin: 0;
         }
+        .recibo-card {
+            width: 100%;
+            height: 66mm;
+            border: 1px dashed #444 !important;
+            margin-bottom: 3mm; /* Reducido un poquito para asegurar que entren 4 */
+            padding: 6mm 8mm;
+            box-sizing: border-box;
+            background: #ffffff !important;
+            page-break-inside: avoid;
+        }
+        .recibo-card:nth-child(4n) {
+            margin-bottom: 0; 
+        }
+        .recibo-table-inner {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .recibo-table-inner td {
+            padding: 0;
+            color: #000000 !important;
+            border: none !important;
+            background: none !important;
+        }
+        .subt-row td {
+            font-size: 12px;
+            padding-bottom: 10px;
+        }
+        .campo-llenado-table {
+            width: 100%;
+            margin-top: 6px;
+            border-collapse: collapse;
+        }
+        .campo-llenado-table td {
+            padding: 2px 0;
+        }
+        .linea-puntos {
+            border-bottom: 1px dotted #000000 !important;
+            font-weight: bold;
+            padding-left: 5px;
+        }
+        .salto-pagina {
+            page-break-after: always;
+            clear: both;
+        }
+    </style>
+    `;
+
+    seleccionados.forEach((chk, index) => {
+        const nombre = chk.value;
+        const monto = parseFloat(chk.getAttribute('data-monto'));
+        const montoFormat = monto.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        html += `
+        <div class="recibo-card">
+            <table class="recibo-table-inner">
+                <tr>
+                    <td colspan="2" style="text-align:center; font-size: 16px; font-weight: bold; text-transform: uppercase; padding-bottom: 12px; letter-spacing: 1px;">Recibo de Dinero</td>
+                </tr>
+                <tr class="subt-row">
+                    <td style="width: 50%;"><b>Fecha:</b> ${fechaViernesFormateada}</td>
+                    <td style="width: 50%; text-align: right;"><b>Recibí de:</b> IIBR Ingeniería SRL</td>
+                </tr>
+                <tr>
+                    <td colspan="2">
+                        <table class="campo-llenado-table">
+                            <tr>
+                                <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>Nombre:</b>&nbsp;</td>
+                                <td class="linea-puntos" style="font-size: 13px;">${nombre}</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2">
+                        <table class="campo-llenado-table">
+                            <tr>
+                                <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>La suma de:</b>&nbsp;</td>
+                                <td class="linea-puntos" style="font-size: 13px;">$ ${montoFormat}</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2">
+                        <table class="campo-llenado-table">
+                            <tr>
+                                <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>En concepto de:</b>&nbsp;</td>
+                                <td class="linea-puntos" style="font-size: 12px;">Mano de obra de hormigón armado para la obra: Sanchez de Bustamante 1165</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2">
+                        <!-- Margen incrementado a 55px para empujar las firmas bien abajo -->
+                        <table style="width: 100%; margin-top: 55px; border-collapse: collapse;">
+                            <tr>
+                                <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>Firma</b></td>
+                                <td style="width: 5%; background: none !important;"></td>
+                                <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>Aclaración</b></td>
+                                <td style="width: 5%; background: none !important;"></td>
+                                <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>DNI / CUIT</b></td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </div>`;
+
+        // Div de salto de página cada 4 elementos
+        if ((index + 1) % 4 === 0 && (index + 1) !== seleccionados.length) {
+            html += '<div class="salto-pagina"></div>';
+        }
+    });
+
+    contenedor.innerHTML = html;
+    document.getElementById('recibos-overlay').style.display = 'none';
+
+    const periodo = document.getElementById('tit-sem').textContent.replace(/ /g, '_');
+    
+    // Configuración ajustada para el PDF
+    const opt = {
+        margin:       [8, 10, 8, 10], // top, left, bottom, right. Reducimos top y bottom a 8mm.
+        filename:     `Recibos_Semanales_${periodo}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, logging: false, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: 'css', after: '.salto-pagina' } // Fuerza explícitamente los cortes donde pusimos la clase CSS
+    };
+    
+    html2pdf().set(opt).from(contenedor).save();
+}
         /* -------------------------------------------------------- */
  
         function abrirSelectorPremios() {
