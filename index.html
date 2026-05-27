@@ -15,17 +15,20 @@
         :root {
             --amarillo: #F5C400; --fondo: #1A1A1A; --sup: #242424;
             --borde: #3A3A3A; --texto: #F0EDE4; --verde: #3DB85A; --rojo: #E24B4A;
-            --gris: #888; --azul: #007799; --naranja: #FF8800; --purpura: #8A2BE2;
+            --gris: #888; --azul: #007799; --naranja: #FF8800; --purpura: #8A2BE2; --rosa: #E91E63;
         }
         html, body { background: var(--fondo); color: var(--texto); font-family: -apple-system, sans-serif; height: 100%; margin: 0; }
         
         #header-fijo { position: absolute; top: 0; left: 0; right: 0; background: var(--sup); z-index: 100; border-bottom: 2px solid var(--borde); }
         
-        .controles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; padding: 6px 4px; }
-        .btn-acc { border: none; padding: 8px 0; border-radius: 4px; font-size: 8px; font-weight: 900; text-transform: uppercase; cursor: pointer; white-space: nowrap; }
+        /* Ajuste para 6 botones en una sola línea */
+        .controles { display: flex; gap: 2px; padding: 6px 4px; width: 100%; box-sizing: border-box; }
+        .btn-acc { flex: 1; border: none; padding: 8px 0; border-radius: 4px; font-size: 7.5px; font-weight: 900; text-transform: uppercase; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
         .btn-web { background: var(--amarillo); color: #1A1A1A; }
         .btn-pdf-dia { background: var(--gris); color: white; }
         .btn-pdf-sem { background: var(--azul); color: white; }
+        .btn-pdf-rec { background: var(--rosa); color: white; }
         .btn-pdf-mes { background: var(--naranja); color: white; }
         .btn-pdf-prem { background: var(--purpura); color: white; }
         
@@ -83,7 +86,8 @@
         <div class="controles">
             <button class="btn-acc btn-web" onclick="guardarWeb()">Guardar</button>
             <button class="btn-acc btn-pdf-dia" onclick="abrirSelectorAnio()">Anual</button>
-            <button class="btn-acc btn-pdf-sem" onclick="abrirSelectorRecibos()">Semanal</button>
+            <button class="btn-acc btn-pdf-sem" onclick="generarPDF('semanal')">Semanal</button>
+            <button class="btn-acc btn-pdf-rec" onclick="abrirSelectorRecibos()">Recibos</button>
             <button class="btn-acc btn-pdf-mes" onclick="generarPDF('mensual')">Mensual</button>
             <button class="btn-acc btn-pdf-prem" onclick="abrirSelectorPremios()">Premios</button>
         </div>
@@ -102,7 +106,7 @@
     <!-- OVERLAY DE SELECCIÓN DE PERSONALES PARA RECIBO -->
     <div class="overlay" id="recibos-overlay">
         <div class="overlay-content" style="max-width: 420px; padding: 20px;">
-            <h3 style="margin-top:0; color: var(--azul); text-transform: uppercase;">Generar Recibos</h3>
+            <h3 style="margin-top:0; color: var(--rosa); text-transform: uppercase;">Generar Recibos</h3>
             <p style="font-size:11px; color:#aaa; margin-bottom: 15px;">Seleccioná para quién querés generar el recibo (Se agrupan máx 4 por hoja en el PDF):</p>
             
             <div id="lista-selector-recibos" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px; background: #1a1a1a; border-radius: 8px; border: 1px solid #333;">
@@ -114,7 +118,7 @@
         </div>
     </div>
  
-    <!-- OVERLAY DE REPORTE ANUAL (Reemplazó al diario) -->
+    <!-- OVERLAY DE REPORTE ANUAL -->
     <div class="overlay" id="anio-overlay">
         <div class="overlay-content">
             <h3 style="margin-top:0; color: var(--amarillo)">Generar Reporte Anual</h3>
@@ -524,18 +528,15 @@
                 }
                 .hoja-a4 {
                     width: 100%;
-                    height: 275mm;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: flex-start;
-                    gap: 3mm;
+                    display: block;
                     page-break-after: always;
                     box-sizing: border-box;
+                    padding-top: 2mm;
                 }
                 .recibo-card {
                     width: 100%;
-                    flex: 1;
-                    max-height: 24%;
+                    height: 62mm;
+                    margin-bottom: 5mm;
                     border: 1px dashed #444 !important;
                     padding: 5mm 8mm;
                     box-sizing: border-box;
@@ -543,6 +544,7 @@
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
+                    page-break-inside: avoid;
                 }
                 .recibo-header {
                     width: 100%;
@@ -642,11 +644,11 @@
             
             const opt = {
                 margin:       10,
-                filename:     `Recibos_Semanales_${periodo}.pdf`,
+                filename:     `Recibos_Impresion_${periodo}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
                 html2canvas:  { scale: 2, logging: false, useCORS: true },
                 jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                pagebreak:    { mode: 'css', after: '.hoja-a4' }
+                pagebreak:    { mode: 'css', after: '.hoja-a4', avoid: '.recibo-card' }
             };
             
             html2pdf().set(opt).from(contenedor).save();
@@ -776,7 +778,6 @@
             if(!anioSeleccionado) { alert('Por favor ingresa un año primero.'); return; }
             document.getElementById('anio-overlay').style.display = 'none';
 
-            // Armamos el array de todos los días del año
             let fechasAnio = [];
             let dInit = new Date(anioSeleccionado, 0, 1);
             let dEnd = new Date(anioSeleccionado, 11, 31);
@@ -855,7 +856,6 @@
             let titulo = tipo === 'semanal' ? 'Reporte de Pago Semanal' : 'Reporte de Pago Mensual';
             let subTitulo = '';
 
-            // Acá está la corrección: para mensual usamos el Mes y el Año reales
             if (tipo === 'semanal') {
                 subTitulo = document.getElementById('tit-sem').textContent;
             } else if (tipo === 'mensual') {
@@ -873,7 +873,7 @@
             `;
             contenedor.appendChild(tablaOriginal.cloneNode(true));
 
-            ejecutarExportacionPDF(contenedor, `reporte_${tipo}.pdf`);
+            ejecutarExportacionPDF(contenedor, `reporte_resumen_${tipo}.pdf`);
         }
 
         /* ----- MOTOR COMPARTIDO DE EXPORTACIÓN PDF ----- */
