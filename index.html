@@ -82,7 +82,7 @@
     <div id="header-fijo">
         <div class="controles">
             <button class="btn-acc btn-web" onclick="guardarWeb()">Guardar</button>
-            <button class="btn-acc btn-pdf-dia" onclick="abrirSelectorFecha()">Diario</button>
+            <button class="btn-acc btn-pdf-dia" onclick="abrirSelectorAnio()">Anual</button>
             <button class="btn-acc btn-pdf-sem" onclick="abrirSelectorRecibos()">Semanal</button>
             <button class="btn-acc btn-pdf-mes" onclick="generarPDF('mensual')">Mensual</button>
             <button class="btn-acc btn-pdf-prem" onclick="abrirSelectorPremios()">Premios</button>
@@ -99,25 +99,29 @@
     
     <button id="fab" onclick="abrirMenu()"><span></span><span></span><span></span></button>
 
+    <!-- OVERLAY DE SELECCIÓN DE PERSONALES PARA RECIBO -->
     <div class="overlay" id="recibos-overlay">
         <div class="overlay-content" style="max-width: 420px; padding: 20px;">
             <h3 style="margin-top:0; color: var(--azul); text-transform: uppercase;">Generar Recibos</h3>
             <p style="font-size:11px; color:#aaa; margin-bottom: 15px;">Seleccioná para quién querés generar el recibo (Se agrupan máx 4 por hoja en el PDF):</p>
             
             <div id="lista-selector-recibos" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px; background: #1a1a1a; border-radius: 8px; border: 1px solid #333;">
-                </div>
+                <!-- Se llena con JS -->
+            </div>
 
             <button class="btn-acc" style="background: var(--verde); color: white; width:100%; height: 45px; font-size:12px;" onclick="generarRecibosPDF()">CREAR PDF DE RECIBOS</button>
             <button onclick="document.getElementById('recibos-overlay').style.display='none'" style="width: 100%; background:none; border:none; color:#aaa; margin-top:15px; cursor:pointer; font-weight:bold;">CANCELAR</button>
         </div>
     </div>
  
-    <div class="overlay" id="fecha-overlay">
+    <!-- OVERLAY DE REPORTE ANUAL (Reemplazó al diario) -->
+    <div class="overlay" id="anio-overlay">
         <div class="overlay-content">
-            <h3 style="margin-top:0; color: var(--amarillo)">Generar Parte Diario</h3>
-            <input type="date" id="input-fecha-pdf">
-            <button class="btn-acc" style="background: var(--verde); color: white; width:100%; height: 45px; margin-top:10px" onclick="procesarPDFDiario()">GENERAR</button>
-            <button onclick="document.getElementById('fecha-overlay').style.display='none'" style="width: 100%; background:none; border:none; color:#aaa; margin-top:15px; cursor:pointer;">CANCELAR</button>
+            <h3 style="margin-top:0; color: var(--amarillo)">Generar Reporte Anual</h3>
+            <p style="font-size:11px; color:#aaa; margin-bottom: 10px;">Ingresá el año para totalizar las horas:</p>
+            <input type="number" id="input-anio-pdf" placeholder="Ej: 2024">
+            <button class="btn-acc" style="background: var(--verde); color: white; width:100%; height: 45px; margin-top:15px" onclick="procesarPDFAnual()">GENERAR PDF</button>
+            <button onclick="document.getElementById('anio-overlay').style.display='none'" style="width: 100%; background:none; border:none; color:#aaa; margin-top:15px; cursor:pointer;">CANCELAR</button>
         </div>
     </div>
 
@@ -454,7 +458,7 @@
                 `).join('');
         }
 
-        /* ----- SECCIÓN DE RECIBOS AUTOMATIZADOS (DISEÑO FIJO EN A4 Y FIRMAS AL FONDO) ----- */
+        /* ----- SECCIÓN DE RECIBOS AUTOMATIZADOS ----- */
         function abrirSelectorRecibos() {
             let h_hoy = new Date(); 
             let sabadoInicial = getSabadoPrevio(h_hoy);
@@ -494,7 +498,6 @@
             const seleccionados = Array.from(document.querySelectorAll('.chk-recibo:checked'));
             if(seleccionados.length === 0) { alert('Seleccioná al menos a una persona'); return; }
 
-            // Calcular exactamente la fecha del viernes de esta semana en pantalla (Sábado + 6 días)
             let h_hoy = new Date(); 
             let sabadoInicial = getSabadoPrevio(h_hoy);
             sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
@@ -521,7 +524,7 @@
                 }
                 .hoja-a4 {
                     width: 100%;
-                    height: 275mm; /* Alto exacto para asegurar que calce perfecto dentro del A4 sin pasarse */
+                    height: 275mm;
                     display: flex;
                     flex-direction: column;
                     justify-content: flex-start;
@@ -531,15 +534,15 @@
                 }
                 .recibo-card {
                     width: 100%;
-                    flex: 1; /* Se reparten el alto automáticamente y parejo */
-                    max-height: 24%; /* Garantiza que un recibo no mida media hoja si se imprimen menos de 4 */
+                    flex: 1;
+                    max-height: 24%;
                     border: 1px dashed #444 !important;
                     padding: 5mm 8mm;
                     box-sizing: border-box;
                     background: #ffffff !important;
                     display: flex;
                     flex-direction: column;
-                    justify-content: space-between; /* Magia pura: estira el contenido y manda las firmas abajo del todo */
+                    justify-content: space-between;
                 }
                 .recibo-header {
                     width: 100%;
@@ -626,10 +629,9 @@
                     </table>
                 </div>`;
 
-                // Si se armó un bloque de 4 recibos o llegamos al final del listado, cerramos la caja tipo A4
                 if ((index + 1) % 4 === 0 || index === seleccionados.length - 1) {
                     html += `<div class="hoja-a4">${htmlPaginaActual}</div>`;
-                    htmlPaginaActual = ''; // Limpiamos para la próxima hoja
+                    htmlPaginaActual = ''; 
                 }
             });
 
@@ -639,18 +641,18 @@
             const periodo = document.getElementById('tit-sem').textContent.replace(/ /g, '_');
             
             const opt = {
-                margin:       10, // Margen general estricto de 10mm
+                margin:       10,
                 filename:     `Recibos_Semanales_${periodo}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
                 html2canvas:  { scale: 2, logging: false, useCORS: true },
                 jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                pagebreak:    { mode: 'css', after: '.hoja-a4' } // Fuerza a que la separación ocurra exactamente en nuestras cajas
+                pagebreak:    { mode: 'css', after: '.hoja-a4' }
             };
             
             html2pdf().set(opt).from(contenedor).save();
         }
-        /* -------------------------------------------------------- */
  
+        /* ----- SECCIÓN REPORTE PREMIOS ----- */
         function abrirSelectorPremios() {
             document.getElementById('premio-preview').style.display = 'none';
             document.getElementById('premios-overlay').style.display = 'flex';
@@ -763,36 +765,86 @@
             ejecutarExportacionPDF(elemento, `horas_faltantes_${ini}_a_${fin}.pdf`);
         }
 
-        function abrirSelectorFecha() { 
-            document.getElementById('fecha-overlay').style.display = 'flex'; 
+        /* ----- SECCIÓN REPORTE ANUAL ----- */
+        function abrirSelectorAnio() { 
+            document.getElementById('input-anio-pdf').value = new Date().getFullYear();
+            document.getElementById('anio-overlay').style.display = 'flex'; 
         }
 
-        function procesarPDFDiario() {
-            const fechaSeleccionada = document.getElementById('input-fecha-pdf').value;
-            if(!fechaSeleccionada) { alert('Por favor selecciona una fecha primero.'); return; }
-            document.getElementById('fecha-overlay').style.display = 'none';
+        function procesarPDFAnual() {
+            const anioSeleccionado = document.getElementById('input-anio-pdf').value;
+            if(!anioSeleccionado) { alert('Por favor ingresa un año primero.'); return; }
+            document.getElementById('anio-overlay').style.display = 'none';
+
+            // Armamos el array de todos los días del año
+            let fechasAnio = [];
+            let dInit = new Date(anioSeleccionado, 0, 1);
+            let dEnd = new Date(anioSeleccionado, 11, 31);
+            
+            while(dInit <= dEnd) {
+                fechasAnio.push(gK(dInit));
+                dInit.setDate(dInit.getDate() + 1);
+            }
 
             const contenedor = document.createElement('div');
-            contenedor.innerHTML = `
-                <h2 style="margin-bottom:15px; font-size:16px;">📋 Parte Diario - Asistencia</h2>
-                <p style="margin-bottom:20px; font-size:12px; color:#555;"><b>Fecha:</b> ${fmtFechaLarga(fechaSeleccionada)}</p>
+            let htmlTabla = `
+                <h2 style="margin-bottom:15px; font-size:16px;">📊 Reporte Anual de Trabajo - ${anioSeleccionado}</h2>
                 <table>
                     <thead>
-                        <tr style="background:#f5f5f5;"><th style="padding:10px 8px;">PERSONAL</th><th style="padding:10px 8px; text-align:center;">ESTADO / HORAS</th></tr>
+                        <tr style="background:#f5f5f5;">
+                            <th style="padding:10px 8px;">PERSONAL</th>
+                            <th style="padding:10px 8px; text-align:center;">DÍAS TRABAJADOS</th>
+                            <th style="padding:10px 8px; text-align:center;">HORAS TOTALES</th>
+                            <th style="padding:10px 8px; text-align:right;">PAGO ESTIMADO</th>
+                        </tr>
                     </thead>
                     <tbody>
-                        ${personal.map(p => {
-                            const reg = asistencia[p] && asistencia[p][fechaSeleccionada];
-                            let texto = '-';
-                            if(reg) { texto = reg.estado === 'ausente' ? 'AUSENTE (X)' : `${reg.horas} Horas`; }
-                            return `<tr><td style="font-weight:bold; padding:10px 8px;">${p}</td><td style="text-align:center; padding:10px 8px;">${texto}</td></tr>`;
-                        }).join('')}
+            `;
+
+            let granTotalPlata = 0;
+
+            personal.forEach(p => {
+                let hsT = 0;
+                let diasPresente = 0;
+                const c = costosConfig[p] || {valorHora: 0};
+                
+                fechasAnio.forEach(k => {
+                    const reg = asistencia[p] && asistencia[p][k];
+                    if(reg) {
+                        let hs = Number(reg.horas) || 0;
+                        if (reg.estado !== 'ausente' && hs >= 1) {
+                            diasPresente++;
+                            hsT += hs;
+                        }
+                    }
+                });
+
+                let totalPlata = hsT * (Number(c.valorHora) || 0);
+                granTotalPlata += totalPlata;
+
+                htmlTabla += `<tr>
+                    <td style="font-weight:bold; padding:10px 8px;">${p}</td>
+                    <td style="text-align:center; padding:10px 8px; color:var(--verde); font-weight:bold;">${diasPresente} días</td>
+                    <td style="text-align:center; padding:10px 8px;">${hsT} h</td>
+                    <td style="text-align:right; padding:10px 8px; font-weight:bold;">$${totalPlata.toLocaleString('es-AR')}</td>
+                </tr>`;
+            });
+
+            htmlTabla += `
                     </tbody>
+                    <tfoot>
+                        <tr class="gran-total-row">
+                            <td colspan="3" style="text-align:left; padding:10px 8px; font-weight:bold; font-size:13px;">TOTAL ACUMULADO ANUAL</td>
+                            <td style="text-align:right; padding:10px 8px; font-weight:bold; color:var(--verde); font-size:13px;">$${granTotalPlata.toLocaleString('es-AR')}</td>
+                        </tr>
+                    </tfoot>
                 </table>`;
             
-            ejecutarExportacionPDF(contenedor, `parte_diario_${fechaSeleccionada}.pdf`);
+            contenedor.innerHTML = htmlTabla;
+            ejecutarExportacionPDF(contenedor, `reporte_anual_${anioSeleccionado}.pdf`);
         }
 
+        /* ----- SECCIÓN REPORTES SEMANAL/MENSUAL ----- */
         function generarPDF(tipo) {
             actualizarTablas();
             let origenId = tipo === 'semanal' ? 't0' : 't1';
@@ -800,19 +852,31 @@
             
             if(!tablaOriginal) { alert('No hay datos disponibles para exportar.'); return; }
             
-            const contenedor = document.createElement('div');
-            const titulo = tipo === 'semanal' ? 'Reporte de Pago Semanal' : 'Reporte de Pago Mensual';
-            const subTitulo = document.getElementById('tit-sem').textContent;
+            let titulo = tipo === 'semanal' ? 'Reporte de Pago Semanal' : 'Reporte de Pago Mensual';
+            let subTitulo = '';
 
+            // Acá está la corrección: para mensual usamos el Mes y el Año reales
+            if (tipo === 'semanal') {
+                subTitulo = document.getElementById('tit-sem').textContent;
+            } else if (tipo === 'mensual') {
+                let h_hoy = new Date(); 
+                let sabadoInicial = getSabadoPrevio(h_hoy);
+                sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
+                const mesNombre = sabadoInicial.toLocaleString('es', {month: 'long'}).toUpperCase();
+                subTitulo = `Mes de ${mesNombre} ${sabadoInicial.getFullYear()}`;
+            }
+
+            const contenedor = document.createElement('div');
             contenedor.innerHTML = `
                 <h2 style="margin-bottom:5px; font-size:16px;">💰 ${titulo}</h2>
-                <p style="margin-bottom:20px; font-size:11px; color:#666;"><b>Período activo de planilla:</b> ${subTitulo}</p>
+                <p style="margin-bottom:20px; font-size:11px; color:#666;"><b>Período activo:</b> ${subTitulo}</p>
             `;
             contenedor.appendChild(tablaOriginal.cloneNode(true));
 
             ejecutarExportacionPDF(contenedor, `reporte_${tipo}.pdf`);
         }
 
+        /* ----- MOTOR COMPARTIDO DE EXPORTACIÓN PDF ----- */
         function ejecutarExportacionPDF(elementoHtml, nombreArchivo) {
             const clon = elementoHtml.cloneNode(true);
             const botonExportar = clon.querySelector('button');
