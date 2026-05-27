@@ -83,7 +83,6 @@
         <div class="controles">
             <button class="btn-acc btn-web" onclick="guardarWeb()">Guardar</button>
             <button class="btn-acc btn-pdf-dia" onclick="abrirSelectorFecha()">Diario</button>
-            <!-- BOTÓN SEMANAL MODIFICADO -->
             <button class="btn-acc btn-pdf-sem" onclick="abrirSelectorRecibos()">Semanal</button>
             <button class="btn-acc btn-pdf-mes" onclick="generarPDF('mensual')">Mensual</button>
             <button class="btn-acc btn-pdf-prem" onclick="abrirSelectorPremios()">Premios</button>
@@ -100,15 +99,13 @@
     
     <button id="fab" onclick="abrirMenu()"><span></span><span></span><span></span></button>
 
-    <!-- NUEVO OVERLAY DE RECIBOS SEMANALES -->
     <div class="overlay" id="recibos-overlay">
         <div class="overlay-content" style="max-width: 420px; padding: 20px;">
             <h3 style="margin-top:0; color: var(--azul); text-transform: uppercase;">Generar Recibos</h3>
             <p style="font-size:11px; color:#aaa; margin-bottom: 15px;">Seleccioná para quién querés generar el recibo (Se agrupan máx 4 por hoja en el PDF):</p>
             
             <div id="lista-selector-recibos" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px; background: #1a1a1a; border-radius: 8px; border: 1px solid #333;">
-                <!-- Se llena con JS -->
-            </div>
+                </div>
 
             <button class="btn-acc" style="background: var(--verde); color: white; width:100%; height: 45px; font-size:12px;" onclick="generarRecibosPDF()">CREAR PDF DE RECIBOS</button>
             <button onclick="document.getElementById('recibos-overlay').style.display='none'" style="width: 100%; background:none; border:none; color:#aaa; margin-top:15px; cursor:pointer; font-weight:bold;">CANCELAR</button>
@@ -457,7 +454,7 @@
                 `).join('');
         }
 
-        /* ----- NUEVAS FUNCIONES PARA LOS RECIBOS SEMANALES ----- */
+        /* ----- SECCIÓN DE RECIBOS AUTOMATIZADOS (DISEÑO MEJORADO Y FIJO) ----- */
         function abrirSelectorRecibos() {
             let h_hoy = new Date(); 
             let sabadoInicial = getSabadoPrevio(h_hoy);
@@ -497,50 +494,138 @@
             const seleccionados = Array.from(document.querySelectorAll('.chk-recibo:checked'));
             if(seleccionados.length === 0) { alert('Seleccioná al menos a una persona'); return; }
 
-            const contenedor = document.createElement('div');
-            contenedor.style.background = '#fff';
-            contenedor.style.color = '#000';
-            contenedor.style.fontFamily = 'Arial, sans-serif';
-            contenedor.style.width = '100%';
+            // Calcular exactamente la fecha del viernes de esta semana en pantalla (Sábado + 6 días)
+            let h_hoy = new Date(); 
+            let sabadoInicial = getSabadoPrevio(h_hoy);
+            sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
             
-            let html = '';
+            let viernesObj = new Date(sabadoInicial);
+            viernesObj.setDate(sabadoInicial.getDate() + 6);
+            let diaV = viernesObj.getDate().toString().padStart(2, '0');
+            let mesV = (viernesObj.getMonth() + 1).toString().padStart(2, '0');
+            let anoV = viernesObj.getFullYear();
+            let fechaViernesFormateada = `${diaV}/${mesV}/${anoV}`;
+
+            const contenedor = document.createElement('div');
+            contenedor.className = 'recibo-print-container';
+            
+            // Inyección de estilos CSS puros para impresión A4 exacta y perfecta alineación
+            let html = `
+            <style>
+                .recibo-print-container {
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    font-family: Arial, sans-serif;
+                    width: 100%;
+                    padding: 0;
+                    margin: 0;
+                }
+                .recibo-card {
+                    width: 100%;
+                    height: 63mm; /* Altura estricta para asegurar 4 por página sin desbordes */
+                    border: 1px dashed #444 !important;
+                    margin-bottom: 5mm;
+                    padding: 5mm 8mm;
+                    box-sizing: border-box;
+                    background: #ffffff !important;
+                }
+                .recibo-card:nth-child(4n) {
+                    margin-bottom: 0; /* Quita el margen al cuarto elemento para evitar hojas en blanco */
+                }
+                .recibo-table-inner {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .recibo-table-inner td {
+                    padding: 0;
+                    color: #000000 !important;
+                    border: none !important;
+                    background: none !important;
+                }
+                .subt-row td {
+                    font-size: 12px;
+                    padding-bottom: 8px;
+                }
+                .campo-llenado-table {
+                    width: 100%;
+                    margin-top: 5px;
+                    border-collapse: collapse;
+                }
+                .campo-llenado-table td {
+                    padding: 2px 0;
+                }
+                .linea-puntos {
+                    border-bottom: 1px dotted #000000 !important;
+                    font-weight: bold;
+                    padding-left: 5px;
+                }
+            </style>
+            `;
+
             seleccionados.forEach((chk, index) => {
                 const nombre = chk.value;
                 const monto = parseFloat(chk.getAttribute('data-monto'));
-                // Formato de moneda con decimales fijos para que quede profesional
                 const montoFormat = monto.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
                 html += `
-                <div style="border: 1px dashed #333; padding: 22px; margin-bottom: 12px; border-radius: 5px; height: 260px; box-sizing: border-box; background-color: #fff;">
-                    <h2 style="text-align:center; margin: 0 0 15px 0; font-size: 18px; text-transform: uppercase;">Recibo de Dinero</h2>
-                    
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 14px;">
-                        <div><b>Fecha:</b> ___ / ___ / ______</div>
-                        <div><b>Recibí de:</b> IIBR Ingeniería SRL</div>
-                    </div>
-                    
-                    <div style="margin-bottom: 15px; font-size: 14px;">
-                        <b>Nombre:</b> ${nombre}
-                    </div>
-                    
-                    <div style="margin-bottom: 15px; font-size: 14px;">
-                        <b>La suma de:</b> $ ${montoFormat}
-                    </div>
-                    
-                    <div style="margin-bottom: 30px; font-size: 14px;">
-                        <b>En concepto de:</b> Mano de obra de hormigón armado para la obra: Sanchez de Bustamante 1165
-                    </div>
-                    
-                    <div style="display: flex; justify-content: space-between; font-size: 14px; margin-top: 35px;">
-                        <div style="border-top: 1px solid #000; padding-top: 5px; width: 30%; text-align:center;"><b>Firma</b></div>
-                        <div style="border-top: 1px solid #000; padding-top: 5px; width: 30%; text-align:center;"><b>Aclaración</b></div>
-                        <div style="border-top: 1px solid #000; padding-top: 5px; width: 30%; text-align:center;"><b>DNI / CUIT</b></div>
-                    </div>
+                <div class="recibo-card">
+                    <table class="recibo-table-inner">
+                        <tr>
+                            <td colspan="2" style="text-align:center; font-size: 16px; font-weight: bold; text-transform: uppercase; padding-bottom: 10px; letter-spacing: 1px;">Recibo de Dinero</td>
+                        </tr>
+                        <tr class="subt-row">
+                            <td style="width: 50%;"><b>Fecha:</b> ${fechaViernesFormateada}</td>
+                            <td style="width: 50%; text-align: right;"><b>Recibí de:</b> IIBR Ingeniería SRL</td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
+                                <table class="campo-llenado-table">
+                                    <tr>
+                                        <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>Nombre:</b>&nbsp;</td>
+                                        <td class="linea-puntos" style="font-size: 13px;">${nombre}</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
+                                <table class="campo-llenado-table">
+                                    <tr>
+                                        <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>La suma de:</b>&nbsp;</td>
+                                        <td class="linea-puntos" style="font-size: 13px;">$ ${montoFormat}</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
+                                <table class="campo-llenado-table">
+                                    <tr>
+                                        <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>En concepto de:</b>&nbsp;</td>
+                                        <td class="linea-puntos" style="font-size: 12px;">Mano de obra de hormigón armado para la obra: Sanchez de Bustamante 1165</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
+                                <table style="width: 100%; margin-top: 22px; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 3px; background: none !important;"><b>Firma</b></td>
+                                        <td style="width: 5%; background: none !important;"></td>
+                                        <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 3px; background: none !important;"><b>Aclaración</b></td>
+                                        <td style="width: 5%; background: none !important;"></td>
+                                        <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 3px; background: none !important;"><b>DNI / CUIT</b></td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
                 </div>`;
 
-                // Agregar salto de página cada 4 recibos (salvo en el último elemento para no dejar una hoja en blanco)
+                // Aplica un salto de página forzado e impecable cada exactamente 4 elementos
                 if ((index + 1) % 4 === 0 && (index + 1) !== seleccionados.length) {
-                    html += '<div style="page-break-after: always; height:0;"></div>';
+                    html += '<div style="page-break-after: always; height:0; clear:both;"></div>';
                 }
             });
 
@@ -552,7 +637,7 @@
                 margin:       10, 
                 filename:     `Recibos_Semanales_${periodo}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, logging: false },
+                html2canvas:  { scale: 2, logging: false, useCORS: true },
                 jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
             
