@@ -1,158 +1,867 @@
-function generarRecibosPDF() {
-    const seleccionados = Array.from(document.querySelectorAll('.chk-recibo:checked'));
-    if(seleccionados.length === 0) { alert('Seleccioná al menos a una persona'); return; }
-
-    // Calcular exactamente la fecha del viernes de esta semana en pantalla (Sábado + 6 días)
-    let h_hoy = new Date(); 
-    let sabadoInicial = getSabadoPrevio(h_hoy);
-    sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SDB Asistencia y Pagos</title>
     
-    let viernesObj = new Date(sabadoInicial);
-    viernesObj.setDate(sabadoInicial.getDate() + 6);
-    let diaV = viernesObj.getDate().toString().padStart(2, '0');
-    let mesV = (viernesObj.getMonth() + 1).toString().padStart(2, '0');
-    let anoV = viernesObj.getFullYear();
-    let fechaViernesFormateada = `${diaV}/${mesV}/${anoV}`;
-
-    const contenedor = document.createElement('div');
-    contenedor.className = 'recibo-print-container';
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     
-    // Inyección de estilos CSS puros para impresión A4 exacta y perfecta alineación
-    let html = `
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
     <style>
-        .recibo-print-container {
-            background: #ffffff !important;
-            color: #000000 !important;
-            font-family: Arial, sans-serif;
-            width: 100%;
-            padding: 0;
-            margin: 0;
+        :root {
+            --amarillo: #F5C400; --fondo: #1A1A1A; --sup: #242424;
+            --borde: #3A3A3A; --texto: #F0EDE4; --verde: #3DB85A; --rojo: #E24B4A;
+            --gris: #888; --azul: #007799; --naranja: #FF8800; --purpura: #8A2BE2;
         }
-        .recibo-card {
-            width: 100%;
-            height: 66mm; /* Más alto para dar más espacio general */
-            border: 1px dashed #444 !important;
-            margin-bottom: 4mm;
-            padding: 6mm 8mm;
-            box-sizing: border-box;
-            background: #ffffff !important;
-            page-break-inside: avoid; /* Clave: Evita que el recibo se corte a la mitad */
-        }
-        .recibo-card:nth-child(4n) {
-            margin-bottom: 0; /* Quita el margen al cuarto elemento */
-        }
-        .recibo-table-inner {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .recibo-table-inner td {
-            padding: 0;
-            color: #000000 !important;
-            border: none !important;
-            background: none !important;
-        }
-        .subt-row td {
-            font-size: 12px;
-            padding-bottom: 10px; /* Un poco más de aire abajo de la fecha */
-        }
-        .campo-llenado-table {
-            width: 100%;
-            margin-top: 6px;
-            border-collapse: collapse;
-        }
-        .campo-llenado-table td {
-            padding: 2px 0;
-        }
-        .linea-puntos {
-            border-bottom: 1px dotted #000000 !important;
-            font-weight: bold;
-            padding-left: 5px;
-        }
-        .salto-pagina {
-            page-break-after: always;
-        }
+        html, body { background: var(--fondo); color: var(--texto); font-family: -apple-system, sans-serif; height: 100%; margin: 0; }
+        
+        #header-fijo { position: absolute; top: 0; left: 0; right: 0; background: var(--sup); z-index: 100; border-bottom: 2px solid var(--borde); }
+        
+        .controles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; padding: 6px 4px; }
+        .btn-acc { border: none; padding: 8px 0; border-radius: 4px; font-size: 8px; font-weight: 900; text-transform: uppercase; cursor: pointer; white-space: nowrap; }
+        .btn-web { background: var(--amarillo); color: #1A1A1A; }
+        .btn-pdf-dia { background: var(--gris); color: white; }
+        .btn-pdf-sem { background: var(--azul); color: white; }
+        .btn-pdf-mes { background: var(--naranja); color: white; }
+        .btn-pdf-prem { background: var(--purpura); color: white; }
+        
+        .nav-sem { display: flex; align-items: center; padding: 0 15px; background: #2E2E2E; justify-content: space-between; height: 40px; }
+        .tit-periodo { font-size: 11px; font-weight: bold; color: var(--amarillo); }
+        .grid-header { display: grid; grid-template-columns: 85px repeat(7, 1fr); background: var(--sup); border-top: 1px solid var(--borde); }
+        .d-col { text-align: center; padding: 6px 0; font-size: 9px; font-weight: 700; color: #888; border-left: 1px solid #2a2a2a; }
+        
+        #scroll-area { position: absolute; top: 135px; bottom: 0; left: 0; right: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .fila { display: grid; grid-template-columns: 85px repeat(7, 1fr); border-bottom: 1px solid var(--borde); align-items: center; padding: 5px 0; }
+        .nom { font-size: 10px; font-weight: 600; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
+        .btn-est { width: 32px; height: 32px; border-radius: 5px; border: none; background: #2E2E2E; color: #444; font-size: 11px; cursor: pointer; }
+        .btn-est.presente, .btn-est.horas { background: rgba(61,184,90,0.25); color: var(--verde); border: 1px solid var(--verde); }
+        .btn-est.ausente { background: rgba(226,75,74,0.25); color: var(--rojo); border: 1px solid var(--rojo); }
+        
+        #fab { position: fixed; bottom: 25px; right: 20px; width: 55px; height: 55px; background: var(--amarillo); border-radius: 50%; border: none; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer; z-index: 1000; }
+        #fab span { width: 22px; height: 3px; background: #1A1A1A; border-radius: 2px; }
+        
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 2000; flex-direction: column; justify-content: center; align-items: center; }
+        .overlay-content { background: var(--sup); width: 90%; max-width: 380px; padding: 25px; border-radius: 15px; border: 1px solid var(--borde); box-sizing: border-box; }
+        
+        .tabs-header { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--sup); padding: 10px; gap: 4px; width: 100%; border-bottom: 1px solid var(--borde); box-sizing: border-box; }
+        .tab-btn { padding: 10px 0; border: none; border-radius: 5px; background: #333; color: #888; font-size: 8px; font-weight: bold; cursor: pointer; }
+        .tab-btn.active { background: var(--amarillo); color: #1A1A1A; }
+        .tab-container { flex: 1; width: 100%; overflow-y: auto; padding: 20px; box-sizing: border-box; padding-bottom: 100px; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        input[type="date"], input[type="number"], input[type="text"] { background: #111; border: 1px solid var(--borde); color: white; padding: 10px; width: 100%; box-sizing: border-box; border-radius: 5px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        td, th { padding: 12px 8px; border-bottom: 1px solid #333; text-align: left; }
+        .t-total { font-weight: bold; color: #007799 !important; background-color: #e0f7fa !important; }
+        
+        #sync-status { position: fixed; top: 5px; right: 8px; font-size: 9px; font-weight: bold; z-index: 200; padding: 2px 6px; border-radius: 4px; }
+        #sync-status.ok { background: rgba(61,184,90,0.3); color: var(--verde); }
+        #sync-status.error { background: rgba(226,75,74,0.3); color: var(--rojo); }
+        #sync-status.loading { background: rgba(245,196,0,0.3); color: var(--amarillo); }
+ 
+        /* PREMIOS MODAL EXTERNO */
+        .premio-label { font-size: 11px; color: #aaa; margin-bottom: 5px; margin-top: 14px; display: block; }
+        .premio-row-config { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .btn-premio-gen { background: var(--purpura); color: white; border: none; border-radius: 6px; width: 100%; padding: 13px 0; font-weight: 900; font-size: 11px; cursor: pointer; margin-top: 12px; text-transform: uppercase; }
+        .premio-table th { background: #1e1e1e; color: #aaa; font-size: 10px; padding: 8px 5px; border-bottom: 1px solid #333; }
+        .premio-table td { font-size: 11px; padding: 8px 5px; border-bottom: 1px solid #2a2a2a; }
+        .premio-table .gran-total-row td { background: #1a2a1a; color: var(--verde); font-weight: bold; font-size: 12px; }
+        .premio-preview { margin-top: 16px; border-radius: 8px; overflow: hidden; border: 1px solid var(--borde); max-height: 250px; overflow-y: auto; }
+        .premio-preview-header { background: #1e1e1e; padding: 10px 12px; font-size: 11px; color: #fff; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
     </style>
-    `;
-
-    seleccionados.forEach((chk, index) => {
-        const nombre = chk.value;
-        const monto = parseFloat(chk.getAttribute('data-monto'));
-        const montoFormat = monto.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-
-        html += `
-        <div class="recibo-card">
-            <table class="recibo-table-inner">
-                <tr>
-                    <td colspan="2" style="text-align:center; font-size: 16px; font-weight: bold; text-transform: uppercase; padding-bottom: 12px; letter-spacing: 1px;">Recibo de Dinero</td>
-                </tr>
-                <tr class="subt-row">
-                    <td style="width: 50%;"><b>Fecha:</b> ${fechaViernesFormateada}</td>
-                    <td style="width: 50%; text-align: right;"><b>Recibí de:</b> IIBR Ingeniería SRL</td>
-                </tr>
-                <tr>
-                    <td colspan="2">
-                        <table class="campo-llenado-table">
-                            <tr>
-                                <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>Nombre:</b>&nbsp;</td>
-                                <td class="linea-puntos" style="font-size: 13px;">${nombre}</td>
-                            </tr>
-                        </table>
-                    </td>
-                </tr>
-                <tr>
-                    <td colspan="2">
-                        <table class="campo-llenado-table">
-                            <tr>
-                                <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>La suma de:</b>&nbsp;</td>
-                                <td class="linea-puntos" style="font-size: 13px;">$ ${montoFormat}</td>
-                            </tr>
-                        </table>
-                    </td>
-                </tr>
-                <tr>
-                    <td colspan="2">
-                        <table class="campo-llenado-table">
-                            <tr>
-                                <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>En concepto de:</b>&nbsp;</td>
-                                <td class="linea-puntos" style="font-size: 12px;">Mano de obra de hormigón armado para la obra: Sanchez de Bustamante 1165</td>
-                            </tr>
-                        </table>
-                    </td>
-                </tr>
-                <tr>
-                    <td colspan="2">
-                        <!-- Acá está la magia: margin-top: 35px para separar bien las firmas del concepto -->
-                        <table style="width: 100%; margin-top: 35px; border-collapse: collapse;">
-                            <tr>
-                                <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>Firma</b></td>
-                                <td style="width: 5%; background: none !important;"></td>
-                                <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>Aclaración</b></td>
-                                <td style="width: 5%; background: none !important;"></td>
-                                <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>DNI / CUIT</b></td>
-                            </tr>
-                        </table>
-                    </td>
-                </tr>
-            </table>
-        </div>`;
-
-        // Aplica un salto de página forzado e impecable cada exactamente 4 elementos
-        if ((index + 1) % 4 === 0 && (index + 1) !== seleccionados.length) {
-            html += '<div class="salto-pagina"></div>';
-        }
-    });
-
-    contenedor.innerHTML = html;
-    document.getElementById('recibos-overlay').style.display = 'none';
-
-    const periodo = document.getElementById('tit-sem').textContent.replace(/ /g, '_');
-    const opt = {
-        margin:       10, 
-        filename:     `Recibos_Semanales_${periodo}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, logging: false, useCORS: true },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
+</head>
+<body>
+    <div id="sync-status" class="loading">Conectando...</div>
     
-    html2pdf().set(opt).from(contenedor).save();
-}
+    <div id="header-fijo">
+        <div class="controles">
+            <button class="btn-acc btn-web" onclick="guardarWeb()">Guardar</button>
+            <button class="btn-acc btn-pdf-dia" onclick="abrirSelectorFecha()">Diario</button>
+            <button class="btn-acc btn-pdf-sem" onclick="abrirSelectorRecibos()">Semanal</button>
+            <button class="btn-acc btn-pdf-mes" onclick="generarPDF('mensual')">Mensual</button>
+            <button class="btn-acc btn-pdf-prem" onclick="abrirSelectorPremios()">Premios</button>
+        </div>
+        <div class="nav-sem">
+            <button onclick="moverSem(-1)" style="background: none; border: none; color:white; font-size: 24px; cursor: pointer;">&#8249;</button>
+            <div id="tit-sem" class="tit-periodo"></div>
+            <button onclick="moverSem(1)" style="background: none; border:none; color: white; font-size: 24px; cursor: pointer;">&#8250;</button>
+        </div>
+        <div class="grid-header" id="dias-h"></div>
+    </div>
+ 
+    <div id="scroll-area"><div id="lista"></div></div>
+    
+    <button id="fab" onclick="abrirMenu()"><span></span><span></span><span></span></button>
+
+    <!-- OVERLAY DE SELECCIÓN DE PERSONALES PARA RECIBO -->
+    <div class="overlay" id="recibos-overlay">
+        <div class="overlay-content" style="max-width: 420px; padding: 20px;">
+            <h3 style="margin-top:0; color: var(--azul); text-transform: uppercase;">Generar Recibos</h3>
+            <p style="font-size:11px; color:#aaa; margin-bottom: 15px;">Seleccioná para quién querés generar el recibo (Se agrupan máx 4 por hoja en el PDF):</p>
+            
+            <div id="lista-selector-recibos" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px; background: #1a1a1a; border-radius: 8px; border: 1px solid #333;">
+                <!-- Se llena con JS -->
+            </div>
+
+            <button class="btn-acc" style="background: var(--verde); color: white; width:100%; height: 45px; font-size:12px;" onclick="generarRecibosPDF()">CREAR PDF DE RECIBOS</button>
+            <button onclick="document.getElementById('recibos-overlay').style.display='none'" style="width: 100%; background:none; border:none; color:#aaa; margin-top:15px; cursor:pointer; font-weight:bold;">CANCELAR</button>
+        </div>
+    </div>
+ 
+    <div class="overlay" id="fecha-overlay">
+        <div class="overlay-content">
+            <h3 style="margin-top:0; color: var(--amarillo)">Generar Parte Diario</h3>
+            <input type="date" id="input-fecha-pdf">
+            <button class="btn-acc" style="background: var(--verde); color: white; width:100%; height: 45px; margin-top:10px" onclick="procesarPDFDiario()">GENERAR</button>
+            <button onclick="document.getElementById('fecha-overlay').style.display='none'" style="width: 100%; background:none; border:none; color:#aaa; margin-top:15px; cursor:pointer;">CANCELAR</button>
+        </div>
+    </div>
+
+    <div class="overlay" id="premios-overlay">
+        <div class="overlay-content" style="max-width: 450px;">
+            <h3 style="margin-top:0; color: var(--purpura); text-transform: uppercase; font-size:14px;">🏆 Reporte de Horas Faltantes</h3>
+            
+            <div class="premio-row-config">
+                <div>
+                    <span class="premio-label">Fecha inicio</span>
+                    <input type="date" id="premio-fecha-ini">
+                </div>
+                <div>
+                    <span class="premio-label">Fecha fin</span>
+                    <input type="date" id="premio-fecha-fin">
+                </div>
+            </div>
+ 
+            <button class="btn-premio-gen" onclick="calcularPremios()">Calcular y Previsualizar</button>
+ 
+            <div id="premio-preview" class="premio-preview" style="display:none;"></div>
+            
+            <button onclick="document.getElementById('premios-overlay').style.display='none'" style="width: 100%; background:none; border:none; color:#aaa; margin-top:15px; cursor:pointer; font-size:12px;">CERRAR VENTANA</button>
+        </div>
+    </div>
+ 
+    <div class="overlay" id="menu-overlay">
+        <div class="tabs-header">
+            <button class="tab-btn active" onclick="verTab(0)">SEMANAL</button>
+            <button class="tab-btn" onclick="verTab(1)">MENSUAL</button>
+            <button class="tab-btn" onclick="verTab(2)">$/HORA</button>
+            <button class="tab-btn" onclick="verTab(3)">PERSONAL</button>
+        </div>
+        <div class="tab-container" style="background: var(--fondo);">
+            <div id="t0" class="tab-content active"></div>
+            <div id="t1" class="tab-content"></div>
+            <div id="t2" class="tab-content"></div>
+            <div id="t3" class="tab-content">
+                <h4 style="color:var(--amarillo); margin-top:0;">Agregar Nuevo</h4>
+                <input type="text" id="nuevo-nombre" placeholder="Nombre completo">
+                <button class="btn-acc" style="background: var(--verde); color: white; width:100%; padding:12px; margin-top: 10px;" onclick="agregarPersonal()">AGREGAR</button>
+                <div id="lista-borrar" style="margin-top: 20px"></div>
+            </div>
+        </div>
+        <button onclick="cerrarMenu()" style="position:fixed; bottom: 20px; width:90%; left: 5%; padding: 15px; background: var(--amarillo); border: none; border-radius: 8px; font-weight: bold; cursor:pointer; font-size:12px;">VOLVER A PLANILLA</button>
+    </div>
+ 
+    <div class="overlay" id="asistencia-overlay">
+        <div class="overlay-content" id="modal-asistencia"></div>
+    </div>
+ 
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCcjAZZnfjheX9s9qyZzKdua80aCKlhZrA",
+            authDomain: "asistencia-sdb.firebaseapp.com",
+            projectId: "asistencia-sdb",
+            storageBucket: "asistencia-sdb.firebasestorage.app",
+            messagingSenderId: "965527629930",
+            appId: "1:965527629930:web:ff0a0680bea61b04b65a13",
+            measurementId: "G-SYHE29L9H3",
+            databaseURL: "https://asistencia-sdb-default-rtdb.firebaseio.com"
+        };
+ 
+        let db, docRef;
+        const DEFAULT_PERSONAL = ['Adolf', 'Andrs', 'Eleu', 'Gavin', 'Vict', 'Nildo', 'Geron', 'Dario', 'Alberto Manuel'];
+        let personal = [...DEFAULT_PERSONAL];
+        let asistencia = {};
+        let costosConfig = {};
+        let semOff = 0;
+        let mPers = '', mDk = '';
+        const DIAS = ['SA', 'DO', 'LU', 'MA', 'MI', 'JU', 'VI'];
+        
+        const syncCostos = () => personal.forEach(p => { if(!costosConfig[p]) costosConfig[p] = { valorHora: 0 }; });
+ 
+        function iniciarFirebase() {
+            if (typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+                docRef = db.ref('sdb/asistencia');
+                
+                const ultimaSemana = localStorage.getItem('sdb_ultima_semana');
+                if (ultimaSemana !== null) {
+                    semOff = parseInt(ultimaSemana, 10) || 0;
+                }
+                
+                docRef.on('value', snap => {
+                    const status = document.getElementById('sync-status');
+                    if (snap.exists()) {
+                        const data = snap.val();
+                        personal = data.personal || [...DEFAULT_PERSONAL];
+                        asistencia = data.asistencia || {};
+                        costosConfig = data.costosConfig || {};
+                        syncCostos();
+                        render();
+                        status.textContent = 'En línea';
+                        status.className = 'ok';
+                    } else {
+                        docRef.set({ personal: [...DEFAULT_PERSONAL], asistencia: {}, costosConfig: {} });
+                        status.textContent = 'En línea';
+                        status.className = 'ok';
+                    }
+                }, err => {
+                    const status = document.getElementById('sync-status');
+                    status.textContent = 'X Sin conexión';
+                    status.className = 'error';
+                });
+            } else {
+                setTimeout(iniciarFirebase, 200);
+            }
+        }
+        
+        window.onload = iniciarFirebase;
+ 
+        function guardarWeb() {
+            if(!docRef) return;
+            const status = document.getElementById('sync-status');
+            status.textContent = 'Guardando...';
+            status.className = 'loading';
+            
+            localStorage.setItem('sdb_ultima_semana', semOff);
+
+            docRef.set({ personal, asistencia, costosConfig })
+                .then(() => {
+                    status.textContent = 'En línea';
+                    status.className = 'ok';
+                    alert("Datos guardados en la nube");
+                })
+                .catch(err => {
+                    status.textContent = 'X Error al guardar';
+                    status.className = 'error';
+                    alert("Error al guardar.");
+                });
+        }
+ 
+        function guardarSilencioso() {
+            localStorage.setItem('sdb_ultima_semana', semOff);
+            if(docRef) docRef.set({ personal, asistencia, costosConfig }).catch(console.error);
+        }
+ 
+        const gK = d => `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`;
+ 
+        function getSabadoPrevio(fecha) {
+            let d = new Date(fecha);
+            let day = d.getDay(); 
+            let diff = (day === 6) ? 0 : -(day + 1);
+            d.setDate(d.getDate() + diff);
+            return d;
+        }
+
+        function render() {
+            let h = new Date();
+            let sabadoInicial = getSabadoPrevio(h);
+            sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
+            
+            const ds = [0,1,2,3,4,5,6].map(x => { 
+                let d = new Date(sabadoInicial); 
+                d.setDate(sabadoInicial.getDate() + x); 
+                return d; 
+            });
+ 
+            document.getElementById('tit-sem').textContent = `${ds[0].getDate()} ${ds[0].toLocaleString('es', {month: 'short'}).toUpperCase()} al ${ds[6].getDate()} ${ds[6].toLocaleString('es', {month: 'short'}).toUpperCase()}`;
+            document.getElementById('dias-h').innerHTML = '<div class="d-col"></div>' + ds.map((d,i) => `<div class="d-col">${DIAS[i]}<br><span style="font-size:12px; color:#ddd">${d.getDate()}</span></div>`).join('');
+            
+            document.getElementById('lista').innerHTML = personal.map(p => `
+                <div class="fila">
+                    <div class="nom">${p}</div>
+                    ${ds.map(d => {
+                        const k = gK(d);
+                        const v = (asistencia[p] && asistencia[p][k]) ? asistencia[p][k] : { estado: 'vacio', horas: 0 };
+                        let ic = v.estado === 'ausente' ? 'X' : (v.horas > 0 ? v.horas + 'h' : '-');
+                        let cl = v.estado === 'ausente' ? 'ausente' : (v.horas > 0 ? 'horas' : '');
+                        return `<div style="text-align:center"><button class="btn-est ${cl}" onclick="abrirAsis('${p}','${k}')">${ic}</button></div>`;
+                    }).join('')}
+                </div>
+            `).join('');
+        }
+ 
+        function abrirAsis(p, dk) {
+            mPers = p; mDk = dk;
+            const v = (asistencia[p] && asistencia[p][dk]) ? asistencia[p][dk] : { estado: 'vacio', horas: '' };
+            document.getElementById('modal-asistencia').innerHTML = `
+                <h2 style="text-align:center; color:var(--amarillo)">${p}</h2>
+                <input type="number" id="h-in" value="${v.horas}" placeholder="Ej: 9" style="text-align:center; font-size: 18px; margin-bottom: 15px;">
+                <button class="btn-acc" style="background: var(--azul); color: white; width: 100%; height: 45px;" onclick="setA('horas')">CARGAR HORAS</button>
+                <button class="btn-acc" style="background: var(--rojo); color: white; width: 100%; height: 45px; margin-top: 10px" onclick="setA('ausente')">MARCAR AUSENTE</button>
+                <button onclick="document.getElementById('asistencia-overlay').style.display='none'" style="width:100%; background:none; border:none; color:#aaa; margin-top:15px; cursor:pointer;">CERRAR</button>
+            `;
+            document.getElementById('asistencia-overlay').style.display = 'flex';
+        }
+ 
+        function setA(e) {
+            let h = parseFloat(document.getElementById('h-in').value) || 0;
+            if(!asistencia[mPers]) asistencia[mPers] = {};
+            asistencia[mPers][mDk] = { estado: e, horas: h };
+            document.getElementById('asistencia-overlay').style.display = 'none';
+            render();
+            guardarSilencioso();
+        }
+ 
+        function agregarPersonal() {
+            let n = document.getElementById('nuevo-nombre').value.trim();
+            if (n && !personal.includes(n)) {
+                personal.push(n);
+                syncCostos();
+                document.getElementById('nuevo-nombre').value = '';
+                actualizarTablas();
+                render();
+                guardarSilencioso();
+            }
+        }
+ 
+        function borrarPers(p) {
+            if(confirm('¿Borrar a ' + p + '?')) {
+                personal = personal.filter(x => x !== p);
+                actualizarTablas();
+                render();
+                guardarSilencioso();
+            }
+        }
+ 
+        function abrirMenu() { actualizarTablas(); document.getElementById('menu-overlay').style.display = 'flex'; }
+        function cerrarMenu() { document.getElementById('menu-overlay').style.display = 'none'; render(); }
+        function verTab(n) {
+            document.querySelectorAll('.tab-btn, .tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn')[n].classList.add('active');
+            document.getElementById('t'+n).classList.add('active');
+        }
+ 
+        function actualizarTablas() {
+            let h_hoy = new Date(); 
+            let sabadoInicial = getSabadoPrevio(h_hoy);
+            sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
+ 
+            const dsSem = [0,1,2,3,4,5,6].map(x => {
+                let d = new Date(sabadoInicial); d.setDate(sabadoInicial.getDate() + x); return gK(d); 
+            });
+            
+            let h0 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th style="text-align:center;">ESTADO</th><th style="text-align:center;">HS</th><th>PAGO</th></tr></thead><tbody>';
+            let tS = 0;
+            
+            personal.forEach(p => {
+                let hsT = 0;
+                let diasPresente = 0;
+                const c = costosConfig[p] || {valorHora: 0};
+                
+                dsSem.forEach(k => { 
+                    if (asistencia[p] && asistencia[p][k]) {
+                        let hs = Number(asistencia[p][k].horas) || 0;
+                        if (asistencia[p][k].estado !== 'ausente' && hs >= 1) {
+                            diasPresente += 1;
+                            hsT += hs;
+                        }
+                    } 
+                });
+                
+                let sub = hsT * (Number(c.valorHora) || 0); 
+                tS += sub;
+                
+                const estadoTexto = diasPresente > 0 ? `Presente (${diasPresente}d)` : 'Ausente';
+                const estadoColor = diasPresente > 0 ? '#3DB85A' : '#E24B4A';
+
+                h0 += `<tr>
+                    <td style="font-weight: bold">${p}</td>
+                    <td style="text-align:center; color:${estadoColor}; font-weight:bold;">${estadoTexto}</td>
+                    <td style="text-align:center;">${hsT} h</td>
+                    <td>$${sub.toLocaleString('es-AR')}</td>
+                </tr>`;
+            });
+            document.getElementById('t0').innerHTML = h0 + `</tbody><tfoot><tr class="t-total"><td colspan="3">TOTAL SEMANA</td><td>$${tS.toLocaleString('es-AR')}</td></tr></tfoot></table>`;
+ 
+            let h1 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th style="text-align:center;">ESTADO</th><th style="text-align:center;">HS</th><th>PAGO</th></tr></thead><tbody>';
+            let tM = 0; 
+            
+            let mesAct = sabadoInicial.getMonth(); 
+            let anoAct = sabadoInicial.getFullYear();
+            
+            let inicioMes = new Date(anoAct, mesAct, 1);
+            let finMes = new Date(anoAct, mesAct + 1, 0);
+            
+            const fechasMes = [];
+            let curMes = new Date(inicioMes);
+            while (curMes <= finMes) {
+                fechasMes.push(gK(curMes));
+                curMes.setDate(curMes.getDate() + 1);
+            }
+
+            personal.forEach(p => {
+                let hsM = 0; 
+                let diasPresenteMes = 0;
+                const c = costosConfig[p] || {valorHora: 0};
+                
+                fechasMes.forEach(k => {
+                    if (asistencia[p] && asistencia[p][k]) {
+                        let hs = Number(asistencia[p][k].horas) || 0;
+                        if (asistencia[p][k].estado !== 'ausente' && hs >= 1) {
+                            diasPresenteMes += 1;
+                            hsM += hs;
+                        }
+                    }
+                });
+                
+                let sub = hsM * (Number(c.valorHora) || 0); 
+                tM += sub;
+                
+                const estadoTextoMes = diasPresenteMes > 0 ? `Presente (${diasPresenteMes}d)` : 'Ausente';
+                const estadoColorMes = diasPresenteMes > 0 ? '#3DB85A' : '#E24B4A';
+
+                h1 += `<tr>
+                    <td style="font-weight: bold">${p}</td>
+                    <td style="text-align:center; color:${estadoColorMes}; font-weight:bold;">${estadoTextoMes}</td>
+                    <td style="text-align:center;">${hsM} h</td>
+                    <td>$${sub.toLocaleString('es-AR')}</td>
+                </tr>`;
+            });
+            document.getElementById('t1').innerHTML = h1 + `</tbody><tfoot><tr class="t-total"><td colspan="3">TOTAL MES</td><td>$${tM.toLocaleString('es-AR')}</td></tr></tfoot></table>`;
+ 
+            let h2 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th>$/HORA</th></tr></thead><tbody>';
+            personal.forEach(p => {
+                const c = costosConfig[p] || {valorHora:0};
+                h2 += `<tr><td>${p}</td><td><input type="number" value="${c.valorHora}" onchange="costosConfig['${p}'].valorHora = Number(this.value) || 0; guardarSilencioso()"></td></tr>`;
+            });
+            document.getElementById('t2').innerHTML = h2 + '</tbody></table>';
+ 
+            actualizarListaBorrar();
+        }
+ 
+        function actualizarListaBorrar() {
+            document.getElementById('lista-borrar').innerHTML = '<h4 style="color: #aaa;">Borrar Personal</h4>' + 
+                personal.map(p => `
+                    <div style="display: flex; justify-content: space-between; padding:10px; background: #222; margin-bottom: 5px; border-radius: 5px;">
+                        <span>${p}</span>
+                        <button onclick="borrarPers('${p}')" style="background: var(--rojo); border: none; color: white; padding: 5px 10px; border-radius: 3px; cursor: pointer;">Borrar</button>
+                    </div>
+                `).join('');
+        }
+
+        /* ----- SECCIÓN DE RECIBOS AUTOMATIZADOS (DISEÑO MEJORADO Y FIJO) ----- */
+        function abrirSelectorRecibos() {
+            let h_hoy = new Date(); 
+            let sabadoInicial = getSabadoPrevio(h_hoy);
+            sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
+            const dsSem = [0,1,2,3,4,5,6].map(x => {
+                let d = new Date(sabadoInicial); d.setDate(sabadoInicial.getDate() + x); return gK(d); 
+            });
+
+            let opcionesHtml = '';
+            personal.forEach(p => {
+                let hsT = 0;
+                const c = costosConfig[p] || {valorHora: 0};
+                dsSem.forEach(k => { 
+                    if (asistencia[p] && asistencia[p][k]) {
+                        let hs = Number(asistencia[p][k].horas) || 0;
+                        if (asistencia[p][k].estado !== 'ausente' && hs >= 1) hsT += hs;
+                    } 
+                });
+                let total = hsT * (Number(c.valorHora) || 0); 
+                
+                opcionesHtml += `
+                    <label style="display:flex; justify-content:space-between; align-items:center; padding: 12px 10px; border-bottom: 1px solid #333; cursor:pointer;">
+                        <span>
+                            <input type="checkbox" class="chk-recibo" value="${p}" data-monto="${total}" ${total > 0 ? 'checked' : ''}>
+                            <span style="font-size:14px; margin-left:8px; font-weight:bold; color: white;">${p}</span>
+                        </span>
+                        <span style="color:var(--verde); font-size:14px; font-weight:bold;">$${total.toLocaleString('es-AR')}</span>
+                    </label>
+                `;
+            });
+
+            document.getElementById('lista-selector-recibos').innerHTML = opcionesHtml;
+            document.getElementById('recibos-overlay').style.display = 'flex';
+        }
+
+        function generarRecibosPDF() {
+            const seleccionados = Array.from(document.querySelectorAll('.chk-recibo:checked'));
+            if(seleccionados.length === 0) { alert('Seleccioná al menos a una persona'); return; }
+
+            // Calcular exactamente la fecha del viernes de esta semana en pantalla (Sábado + 6 días)
+            let h_hoy = new Date(); 
+            let sabadoInicial = getSabadoPrevio(h_hoy);
+            sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
+            
+            let viernesObj = new Date(sabadoInicial);
+            viernesObj.setDate(sabadoInicial.getDate() + 6);
+            let diaV = viernesObj.getDate().toString().padStart(2, '0');
+            let mesV = (viernesObj.getMonth() + 1).toString().padStart(2, '0');
+            let anoV = viernesObj.getFullYear();
+            let fechaViernesFormateada = `${diaV}/${mesV}/${anoV}`;
+
+            const contenedor = document.createElement('div');
+            contenedor.className = 'recibo-print-container';
+            
+            // Inyección de estilos CSS puros para impresión A4 exacta y perfecta alineación
+            let html = `
+            <style>
+                .recibo-print-container {
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    font-family: Arial, sans-serif;
+                    width: 100%;
+                    padding: 0;
+                    margin: 0;
+                }
+                .recibo-card {
+                    width: 100%;
+                    height: 66mm; /* Más alto para dar más espacio general */
+                    border: 1px dashed #444 !important;
+                    margin-bottom: 4mm;
+                    padding: 6mm 8mm;
+                    box-sizing: border-box;
+                    background: #ffffff !important;
+                    page-break-inside: avoid; /* Clave: Evita que el recibo se corte a la mitad */
+                }
+                .recibo-card:nth-child(4n) {
+                    margin-bottom: 0; /* Quita el margen al cuarto elemento */
+                }
+                .recibo-table-inner {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .recibo-table-inner td {
+                    padding: 0;
+                    color: #000000 !important;
+                    border: none !important;
+                    background: none !important;
+                }
+                .subt-row td {
+                    font-size: 12px;
+                    padding-bottom: 10px; /* Un poco más de aire abajo de la fecha */
+                }
+                .campo-llenado-table {
+                    width: 100%;
+                    margin-top: 6px;
+                    border-collapse: collapse;
+                }
+                .campo-llenado-table td {
+                    padding: 2px 0;
+                }
+                .linea-puntos {
+                    border-bottom: 1px dotted #000000 !important;
+                    font-weight: bold;
+                    padding-left: 5px;
+                }
+                .salto-pagina {
+                    page-break-after: always;
+                }
+            </style>
+            `;
+
+            seleccionados.forEach((chk, index) => {
+                const nombre = chk.value;
+                const monto = parseFloat(chk.getAttribute('data-monto'));
+                const montoFormat = monto.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+                html += `
+                <div class="recibo-card">
+                    <table class="recibo-table-inner">
+                        <tr>
+                            <td colspan="2" style="text-align:center; font-size: 16px; font-weight: bold; text-transform: uppercase; padding-bottom: 12px; letter-spacing: 1px;">Recibo de Dinero</td>
+                        </tr>
+                        <tr class="subt-row">
+                            <td style="width: 50%;"><b>Fecha:</b> ${fechaViernesFormateada}</td>
+                            <td style="width: 50%; text-align: right;"><b>Recibí de:</b> IIBR Ingeniería SRL</td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
+                                <table class="campo-llenado-table">
+                                    <tr>
+                                        <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>Nombre:</b>&nbsp;</td>
+                                        <td class="linea-puntos" style="font-size: 13px;">${nombre}</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
+                                <table class="campo-llenado-table">
+                                    <tr>
+                                        <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>La suma de:</b>&nbsp;</td>
+                                        <td class="linea-puntos" style="font-size: 13px;">$ ${montoFormat}</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
+                                <table class="campo-llenado-table">
+                                    <tr>
+                                        <td style="white-space: nowrap; width: 1%; font-size: 12px;"><b>En concepto de:</b>&nbsp;</td>
+                                        <td class="linea-puntos" style="font-size: 12px;">Mano de obra de hormigón armado para la obra: Sanchez de Bustamante 1165</td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2">
+                                <!-- Acá está la magia: margin-top: 35px para separar bien las firmas del concepto -->
+                                <table style="width: 100%; margin-top: 35px; border-collapse: collapse;">
+                                    <tr>
+                                        <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>Firma</b></td>
+                                        <td style="width: 5%; background: none !important;"></td>
+                                        <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>Aclaración</b></td>
+                                        <td style="width: 5%; background: none !important;"></td>
+                                        <td style="width: 30%; border-top: 1px solid #000000 !important; text-align: center; font-size: 11px; padding-top: 5px; background: none !important;"><b>DNI / CUIT</b></td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                </div>`;
+
+                // Aplica un salto de página forzado e impecable cada exactamente 4 elementos
+                if ((index + 1) % 4 === 0 && (index + 1) !== seleccionados.length) {
+                    html += '<div class="salto-pagina"></div>';
+                }
+            });
+
+            contenedor.innerHTML = html;
+            document.getElementById('recibos-overlay').style.display = 'none';
+
+            const periodo = document.getElementById('tit-sem').textContent.replace(/ /g, '_');
+            const opt = {
+                margin:       10, 
+                filename:     `Recibos_Semanales_${periodo}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, logging: false, useCORS: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            html2pdf().set(opt).from(contenedor).save();
+        }
+        /* -------------------------------------------------------- */
+ 
+        function abrirSelectorPremios() {
+            document.getElementById('premio-preview').style.display = 'none';
+            document.getElementById('premios-overlay').style.display = 'flex';
+        }
+
+        function calcularPremios() {
+            const iniVal = document.getElementById('premio-fecha-ini').value;
+            const finVal = document.getElementById('premio-fecha-fin').value;
+ 
+            if (!iniVal || !finVal) { alert('Ingresá fecha de inicio y fin.'); return; }
+            if (iniVal > finVal) { alert('La fecha de inicio debe ser anterior al fin.'); return; }
+ 
+            const fechas = [];
+            let cur = new Date(iniVal + 'T12:00:00');
+            const fin = new Date(finVal + 'T12:00:00');
+            while (cur <= fin) {
+                fechas.push(new Date(cur));
+                cur.setDate(cur.getDate() + 1);
+            }
+ 
+            const datos = personal.map(p => {
+                let totalFaltantesPersona = 0;
+                let diasPresente = 0;
+                let horasTrabajadasTotal = 0;
+                const valorHoraPersona = (costosConfig[p] && Number(costosConfig[p].valorHora)) ? Number(costosConfig[p].valorHora) : 0;
+                
+                fechas.forEach(d => {
+                    const k = gK(d);
+                    const reg = asistencia[p] && asistencia[p][k];
+                    if (reg) {
+                        let hsTrabajadas = Number(reg.horas) || 0;
+                        if (reg.estado !== 'ausente' && hsTrabajadas >= 1) {
+                            diasPresente += 1;
+                            totalFaltantesPersona += Math.max(0, 9 - hsTrabajadas);
+                            horasTrabajadasTotal += hsTrabajadas;
+                        } else {
+                            totalFaltantesPersona += 9;
+                        }
+                    } else {
+                        totalFaltantesPersona += 9;
+                    }
+                });
+                return { 
+                    nombre: p, 
+                    totalFaltantesPersona, 
+                    diasPresente,
+                    monto: horasTrabajadasTotal * valorHoraPersona 
+                };
+            });
+ 
+            const granTotalHorasFaltantes = datos.reduce((s, d) => s + d.totalFaltantesPersona, 0);
+            const granTotalPlata = datos.reduce((s, d) => s + d.monto, 0);
+ 
+            renderPremioPreview(granTotalHorasFaltantes, granTotalPlata, iniVal, finVal, datos);
+        }
+ 
+        function fmtFechaLarga(isoStr) {
+            const [y,m,d] = isoStr.split('-');
+            return `${d}/${m}/${y}`;
+        }
+ 
+        function renderPremioPreview(granTotalHorasFaltantes, granTotalPlata, iniVal, finVal, datos) {
+            const preview = document.getElementById('premio-preview');
+ 
+            const filas = datos.map(d => {
+                const estadoTexto = d.diasPresente > 0 ? `Presente (${d.diasPresente}d)` : 'Ausente';
+                const estadoColor = d.diasPresente > 0 ? '#3DB85A' : '#E24B4A';
+                
+                return `
+                <tr>
+                    <td style="font-weight:bold; font-size:11px;">${d.nombre}</td>
+                    <td style="text-align:center; color:${estadoColor}; font-weight:bold; font-size:11px;">${estadoTexto}</td>
+                    <td style="text-align:center; color:#E24B4A; font-weight:bold; font-size:11px;">${d.totalFaltantesPersona} h</td>
+                    <td style="text-align:right; color:#F5C400; font-weight:bold; font-size:11px;">$${Math.round(d.monto).toLocaleString('es-AR')}</td>
+                </tr>`;
+            }).join('');
+ 
+            preview.style.display = 'block';
+            preview.innerHTML = `
+                <div class="premio-preview-header">
+                    <span>📅 Período: ${fmtFechaLarga(iniVal)} al ${fmtFechaLarga(finVal)}</span>
+                </div>
+                <table class="premio-table" style="font-size:11px;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;">PERSONAL</th>
+                            <th style="text-align:center;">ESTADO</th>
+                            <th style="text-align:center; color:#E24B4A;">HS FALTANTES</th>
+                            <th style="text-align:right; color:#F5C400;">VALOR TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filas}</tbody>
+                    <tfoot>
+                        <tr class="gran-total-row">
+                            <td style="text-align:left; font-size:11px;" colspan="2">TOTAL GENERAL</td>
+                            <td style="text-align:center; color:#E24B4A;">${granTotalHorasFaltantes} h</td>
+                            <td style="text-align:right; color:#3DB85A;">$${Math.round(granTotalPlata).toLocaleString('es-AR')}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <button onclick="generarPDFPremios('${iniVal}','${finVal}')" style="width:100%; background:var(--purpura); color:white; border:none; padding:12px; font-weight:900; font-size:11px; cursor:pointer; border-top: 1px solid #333; text-transform:uppercase; margin-top:5px;">
+                    📄 CONFIRMAR Y BAJAR PDF
+                </button>
+            `;
+        }
+ 
+        function generarPDFPremios(ini, fin) {
+            const elemento = document.getElementById('premio-preview');
+            if(!elemento) return;
+            ejecutarExportacionPDF(elemento, `horas_faltantes_${ini}_a_${fin}.pdf`);
+        }
+
+        function abrirSelectorFecha() { 
+            document.getElementById('fecha-overlay').style.display = 'flex'; 
+        }
+
+        function procesarPDFDiario() {
+            const fechaSeleccionada = document.getElementById('input-fecha-pdf').value;
+            if(!fechaSeleccionada) { alert('Por favor selecciona una fecha primero.'); return; }
+            document.getElementById('fecha-overlay').style.display = 'none';
+
+            const contenedor = document.createElement('div');
+            contenedor.innerHTML = `
+                <h2 style="margin-bottom:15px; font-size:16px;">📋 Parte Diario - Asistencia</h2>
+                <p style="margin-bottom:20px; font-size:12px; color:#555;"><b>Fecha:</b> ${fmtFechaLarga(fechaSeleccionada)}</p>
+                <table>
+                    <thead>
+                        <tr style="background:#f5f5f5;"><th style="padding:10px 8px;">PERSONAL</th><th style="padding:10px 8px; text-align:center;">ESTADO / HORAS</th></tr>
+                    </thead>
+                    <tbody>
+                        ${personal.map(p => {
+                            const reg = asistencia[p] && asistencia[p][fechaSeleccionada];
+                            let texto = '-';
+                            if(reg) { texto = reg.estado === 'ausente' ? 'AUSENTE (X)' : `${reg.horas} Horas`; }
+                            return `<tr><td style="font-weight:bold; padding:10px 8px;">${p}</td><td style="text-align:center; padding:10px 8px;">${texto}</td></tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>`;
+            
+            ejecutarExportacionPDF(contenedor, `parte_diario_${fechaSeleccionada}.pdf`);
+        }
+
+        function generarPDF(tipo) {
+            actualizarTablas();
+            let origenId = tipo === 'semanal' ? 't0' : 't1';
+            const tablaOriginal = document.getElementById(origenId).querySelector('table');
+            
+            if(!tablaOriginal) { alert('No hay datos disponibles para exportar.'); return; }
+            
+            const contenedor = document.createElement('div');
+            const titulo = tipo === 'semanal' ? 'Reporte de Pago Semanal' : 'Reporte de Pago Mensual';
+            const subTitulo = document.getElementById('tit-sem').textContent;
+
+            contenedor.innerHTML = `
+                <h2 style="margin-bottom:5px; font-size:16px;">💰 ${titulo}</h2>
+                <p style="margin-bottom:20px; font-size:11px; color:#666;"><b>Período activo de planilla:</b> ${subTitulo}</p>
+            `;
+            contenedor.appendChild(tablaOriginal.cloneNode(true));
+
+            ejecutarExportacionPDF(contenedor, `reporte_${tipo}.pdf`);
+        }
+
+        function ejecutarExportacionPDF(elementoHtml, nombreArchivo) {
+            const clon = elementoHtml.cloneNode(true);
+            const botonExportar = clon.querySelector('button');
+            if(botonExportar) botonExportar.remove(); 
+
+            clon.style.maxHeight = 'none';
+            clon.style.overflowY = 'visible';
+            clon.style.background = '#ffffff';
+            clon.style.color = '#000000';
+            clon.style.padding = '20px';
+            clon.style.fontFamily = 'Arial, sans-serif';
+            
+            const header = clon.querySelector('.premio-preview-header');
+            if(header) {
+                header.style.background = '#eeeeee';
+                header.style.color = '#000000';
+                header.style.padding = '10px';
+                header.style.fontSize = '12px';
+            }
+
+            clon.querySelectorAll('table, th, td').forEach(el => {
+                el.style.color = '#000000';
+                el.style.borderColor = '#cccccc';
+                el.style.padding = '10px 8px';
+            });
+            clon.querySelectorAll('th').forEach(el => {
+                el.style.background = '#f5f5f5';
+                el.style.color = '#000000';
+            });
+
+            clon.querySelectorAll('.gran-total-row td, .t-total td').forEach(td => {
+                td.style.background = '#e8f5e9'; 
+                td.style.color = '#000000';      
+                td.style.fontWeight = 'bold';
+            });
+
+            const opt = {
+                margin:       12,
+                filename:     nombreArchivo,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, logging: false },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            html2pdf().set(opt).from(clon).save();
+        }
+
+        function moverSem(n) { semOff += n; render(); }
+    </script>
+</body>
+</html>
