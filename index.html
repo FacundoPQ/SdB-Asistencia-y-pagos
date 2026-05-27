@@ -83,7 +83,8 @@
         <div class="controles">
             <button class="btn-acc btn-web" onclick="guardarWeb()">Guardar</button>
             <button class="btn-acc btn-pdf-dia" onclick="abrirSelectorFecha()">Diario</button>
-            <button class="btn-acc btn-pdf-sem" onclick="generarPDF('semanal')">Semanal</button>
+            <!-- BOTÓN SEMANAL MODIFICADO -->
+            <button class="btn-acc btn-pdf-sem" onclick="abrirSelectorRecibos()">Semanal</button>
             <button class="btn-acc btn-pdf-mes" onclick="generarPDF('mensual')">Mensual</button>
             <button class="btn-acc btn-pdf-prem" onclick="abrirSelectorPremios()">Premios</button>
         </div>
@@ -98,6 +99,21 @@
     <div id="scroll-area"><div id="lista"></div></div>
     
     <button id="fab" onclick="abrirMenu()"><span></span><span></span><span></span></button>
+
+    <!-- NUEVO OVERLAY DE RECIBOS SEMANALES -->
+    <div class="overlay" id="recibos-overlay">
+        <div class="overlay-content" style="max-width: 420px; padding: 20px;">
+            <h3 style="margin-top:0; color: var(--azul); text-transform: uppercase;">Generar Recibos</h3>
+            <p style="font-size:11px; color:#aaa; margin-bottom: 15px;">Seleccioná para quién querés generar el recibo (Se agrupan máx 4 por hoja en el PDF):</p>
+            
+            <div id="lista-selector-recibos" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px; background: #1a1a1a; border-radius: 8px; border: 1px solid #333;">
+                <!-- Se llena con JS -->
+            </div>
+
+            <button class="btn-acc" style="background: var(--verde); color: white; width:100%; height: 45px; font-size:12px;" onclick="generarRecibosPDF()">CREAR PDF DE RECIBOS</button>
+            <button onclick="document.getElementById('recibos-overlay').style.display='none'" style="width: 100%; background:none; border:none; color:#aaa; margin-top:15px; cursor:pointer; font-weight:bold;">CANCELAR</button>
+        </div>
+    </div>
  
     <div class="overlay" id="fecha-overlay">
         <div class="overlay-content">
@@ -134,7 +150,7 @@
     <div class="overlay" id="menu-overlay">
         <div class="tabs-header">
             <button class="tab-btn active" onclick="verTab(0)">SEMANAL</button>
-            <button class="tab-btn" onclick="with(0)verTab(1)">MENSUAL</button>
+            <button class="tab-btn" onclick="verTab(1)">MENSUAL</button>
             <button class="tab-btn" onclick="verTab(2)">$/HORA</button>
             <button class="tab-btn" onclick="verTab(3)">PERSONAL</button>
         </div>
@@ -185,7 +201,6 @@
                 db = firebase.database();
                 docRef = db.ref('sdb/asistencia');
                 
-                // LEER LA ÚLTIMA SEMANA GUARDADA EN ESTE NAVEGADOR
                 const ultimaSemana = localStorage.getItem('sdb_ultima_semana');
                 if (ultimaSemana !== null) {
                     semOff = parseInt(ultimaSemana, 10) || 0;
@@ -225,7 +240,6 @@
             status.textContent = 'Guardando...';
             status.className = 'loading';
             
-            // GUARDAR LA SEMANA ACTUAL EN EL NAVEGADOR
             localStorage.setItem('sdb_ultima_semana', semOff);
 
             docRef.set({ personal, asistencia, costosConfig })
@@ -242,7 +256,6 @@
         }
  
         function guardarSilencioso() {
-            // TAMBIÉN ACTUALIZA LA SEMANA EN EL GUARDADO SILENCIOSO
             localStorage.setItem('sdb_ultima_semana', semOff);
             if(docRef) docRef.set({ personal, asistencia, costosConfig }).catch(console.error);
         }
@@ -341,9 +354,6 @@
             let sabadoInicial = getSabadoPrevio(h_hoy);
             sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
  
-            // ==========================================================================
-            // 1. REPORTE SEMANAL (Pestaña t0) - Con Estado, Horas y Pago Basado en Horas Reales
-            // ==========================================================================
             const dsSem = [0,1,2,3,4,5,6].map(x => {
                 let d = new Date(sabadoInicial); d.setDate(sabadoInicial.getDate() + x); return gK(d); 
             });
@@ -359,7 +369,6 @@
                 dsSem.forEach(k => { 
                     if (asistencia[p] && asistencia[p][k]) {
                         let hs = Number(asistencia[p][k].horas) || 0;
-                        // REGLA: Si trabajó al menos 1 hora y no tiene estado ausente forzado
                         if (asistencia[p][k].estado !== 'ausente' && hs >= 1) {
                             diasPresente += 1;
                             hsT += hs;
@@ -382,21 +391,15 @@
             });
             document.getElementById('t0').innerHTML = h0 + `</tbody><tfoot><tr class="t-total"><td colspan="3">TOTAL SEMANA</td><td>$${tS.toLocaleString('es-AR')}</td></tr></tfoot></table>`;
  
-            // ==========================================================================
-            // 2. REPORTE MENSUAL (Pestaña t1) - CORREGIDO: MES COMPLETO EN BASE A LA SEMANA ACTIVA
-            // ==========================================================================
             let h1 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th style="text-align:center;">ESTADO</th><th style="text-align:center;">HS</th><th>PAGO</th></tr></thead><tbody>';
             let tM = 0; 
             
-            // Detectar mes y año de la semana que se está visualizando en pantalla
             let mesAct = sabadoInicial.getMonth(); 
             let anoAct = sabadoInicial.getFullYear();
             
-            // Forzar las fechas de inicio (Día 1) y fin (Día 30/31) de ese mes completo
             let inicioMes = new Date(anoAct, mesAct, 1);
             let finMes = new Date(anoAct, mesAct + 1, 0);
             
-            // Construir array de fechas de todo el mes entero
             const fechasMes = [];
             let curMes = new Date(inicioMes);
             while (curMes <= finMes) {
@@ -412,7 +415,6 @@
                 fechasMes.forEach(k => {
                     if (asistencia[p] && asistencia[p][k]) {
                         let hs = Number(asistencia[p][k].horas) || 0;
-                        // REGLA: Al menos 1 hora trabajada = Presente
                         if (asistencia[p][k].estado !== 'ausente' && hs >= 1) {
                             diasPresenteMes += 1;
                             hsM += hs;
@@ -435,9 +437,6 @@
             });
             document.getElementById('t1').innerHTML = h1 + `</tbody><tfoot><tr class="t-total"><td colspan="3">TOTAL MES</td><td>$${tM.toLocaleString('es-AR')}</td></tr></tfoot></table>`;
  
-            // ==========================================================================
-            // 3. CONFIGURACIÓN DE COSTOS (Pestaña t2)
-            // ==========================================================================
             let h2 = '<table><thead><tr style="background: #eee; color: #000;"><th>PERSONAL</th><th>$/HORA</th></tr></thead><tbody>';
             personal.forEach(p => {
                 const c = costosConfig[p] || {valorHora:0};
@@ -457,6 +456,109 @@
                     </div>
                 `).join('');
         }
+
+        /* ----- NUEVAS FUNCIONES PARA LOS RECIBOS SEMANALES ----- */
+        function abrirSelectorRecibos() {
+            let h_hoy = new Date(); 
+            let sabadoInicial = getSabadoPrevio(h_hoy);
+            sabadoInicial.setDate(sabadoInicial.getDate() + semOff * 7);
+            const dsSem = [0,1,2,3,4,5,6].map(x => {
+                let d = new Date(sabadoInicial); d.setDate(sabadoInicial.getDate() + x); return gK(d); 
+            });
+
+            let opcionesHtml = '';
+            personal.forEach(p => {
+                let hsT = 0;
+                const c = costosConfig[p] || {valorHora: 0};
+                dsSem.forEach(k => { 
+                    if (asistencia[p] && asistencia[p][k]) {
+                        let hs = Number(asistencia[p][k].horas) || 0;
+                        if (asistencia[p][k].estado !== 'ausente' && hs >= 1) hsT += hs;
+                    } 
+                });
+                let total = hsT * (Number(c.valorHora) || 0); 
+                
+                opcionesHtml += `
+                    <label style="display:flex; justify-content:space-between; align-items:center; padding: 12px 10px; border-bottom: 1px solid #333; cursor:pointer;">
+                        <span>
+                            <input type="checkbox" class="chk-recibo" value="${p}" data-monto="${total}" ${total > 0 ? 'checked' : ''}>
+                            <span style="font-size:14px; margin-left:8px; font-weight:bold; color: white;">${p}</span>
+                        </span>
+                        <span style="color:var(--verde); font-size:14px; font-weight:bold;">$${total.toLocaleString('es-AR')}</span>
+                    </label>
+                `;
+            });
+
+            document.getElementById('lista-selector-recibos').innerHTML = opcionesHtml;
+            document.getElementById('recibos-overlay').style.display = 'flex';
+        }
+
+        function generarRecibosPDF() {
+            const seleccionados = Array.from(document.querySelectorAll('.chk-recibo:checked'));
+            if(seleccionados.length === 0) { alert('Seleccioná al menos a una persona'); return; }
+
+            const contenedor = document.createElement('div');
+            contenedor.style.background = '#fff';
+            contenedor.style.color = '#000';
+            contenedor.style.fontFamily = 'Arial, sans-serif';
+            contenedor.style.width = '100%';
+            
+            let html = '';
+            seleccionados.forEach((chk, index) => {
+                const nombre = chk.value;
+                const monto = parseFloat(chk.getAttribute('data-monto'));
+                // Formato de moneda con decimales fijos para que quede profesional
+                const montoFormat = monto.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+                html += `
+                <div style="border: 1px dashed #333; padding: 22px; margin-bottom: 12px; border-radius: 5px; height: 260px; box-sizing: border-box; background-color: #fff;">
+                    <h2 style="text-align:center; margin: 0 0 15px 0; font-size: 18px; text-transform: uppercase;">Recibo de Dinero</h2>
+                    
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 14px;">
+                        <div><b>Fecha:</b> ___ / ___ / ______</div>
+                        <div><b>Recibí de:</b> IIBR Ingeniería SRL</div>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px; font-size: 14px;">
+                        <b>Nombre:</b> ${nombre}
+                    </div>
+                    
+                    <div style="margin-bottom: 15px; font-size: 14px;">
+                        <b>La suma de:</b> $ ${montoFormat}
+                    </div>
+                    
+                    <div style="margin-bottom: 30px; font-size: 14px;">
+                        <b>En concepto de:</b> Mano de obra de hormigón armado para la obra: Sanchez de Bustamante 1165
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-between; font-size: 14px; margin-top: 35px;">
+                        <div style="border-top: 1px solid #000; padding-top: 5px; width: 30%; text-align:center;"><b>Firma</b></div>
+                        <div style="border-top: 1px solid #000; padding-top: 5px; width: 30%; text-align:center;"><b>Aclaración</b></div>
+                        <div style="border-top: 1px solid #000; padding-top: 5px; width: 30%; text-align:center;"><b>DNI / CUIT</b></div>
+                    </div>
+                </div>`;
+
+                // Agregar salto de página cada 4 recibos (salvo en el último elemento para no dejar una hoja en blanco)
+                if ((index + 1) % 4 === 0 && (index + 1) !== seleccionados.length) {
+                    html += '<div style="page-break-after: always; height:0;"></div>';
+                }
+            });
+
+            contenedor.innerHTML = html;
+            document.getElementById('recibos-overlay').style.display = 'none';
+
+            const periodo = document.getElementById('tit-sem').textContent.replace(/ /g, '_');
+            const opt = {
+                margin:       10, 
+                filename:     `Recibos_Semanales_${periodo}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, logging: false },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            html2pdf().set(opt).from(contenedor).save();
+        }
+        /* -------------------------------------------------------- */
  
         function abrirSelectorPremios() {
             document.getElementById('premio-preview').style.display = 'none';
